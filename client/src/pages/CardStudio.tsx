@@ -176,6 +176,21 @@ export default function CardStudio() {
   };
 
   // On-card filter controls, available from every creation mode
+  const SEGMENT_CHOICES = [['ALL', 'Total AXP'], ['USCS', 'USCS'], ['GCS', 'GCS'], ['ICS', 'ICS']] as const;
+  const PERIOD_CHOICES = [['month', 'Month'], ['quarter', 'Quarter'], ['year', 'Full year'], ['ytd', 'YTD']] as const;
+
+  const toggleOption = <T extends string>(key: 'segmentOptions' | 'periodOptions', all: readonly T[], v: T) => {
+    const current = (config.controls?.[key] as T[] | undefined)?.length ? (config.controls![key] as T[]) : [...all];
+    const next = current.includes(v) ? current.filter((x) => x !== v) : [...current, v];
+    if (!next.length) return; // keep at least one option
+    updateConfig({ controls: { ...config.controls, [key]: next.length === all.length ? undefined : next } });
+  };
+
+  const optionChip = (active: boolean) =>
+    `rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+      active ? 'border-accent bg-accent-soft text-accent' : 'border-line text-ink-faint hover:border-accent/50'
+    }`;
+
   const controlsBlock = (
     <div>
       <span className={label}>On-card controls</span>
@@ -192,6 +207,34 @@ export default function CardStudio() {
           );
         })}
       </div>
+
+      {config.controls?.segment && (
+        <div className="mt-2.5">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">Segment options to offer</p>
+          <div className="flex flex-wrap gap-1.5">
+            {SEGMENT_CHOICES.map(([id, text]) => {
+              const opts = config.controls?.segmentOptions;
+              const active = !opts?.length || opts.includes(id);
+              return <button key={id} onClick={() => toggleOption('segmentOptions', SEGMENT_CHOICES.map(([i]) => i), id)} className={optionChip(active)}>{text}</button>;
+            })}
+          </div>
+          <p className="mt-1 text-[10px] text-ink-faint">GCS and ICS get a multi-select sub-segment breakdown automatically.</p>
+        </div>
+      )}
+
+      {config.controls?.period && (
+        <div className="mt-2.5">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">Period granularities to offer</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PERIOD_CHOICES.map(([id, text]) => {
+              const opts = config.controls?.periodOptions;
+              const active = !opts?.length || opts.includes(id);
+              return <button key={id} onClick={() => toggleOption('periodOptions', PERIOD_CHOICES.map(([i]) => i), id)} className={optionChip(active)}>{text}</button>;
+            })}
+          </div>
+        </div>
+      )}
+
       <p className="mt-1.5 text-[11px] text-ink-faint">
         Render interactive toggles on the card itself — viewers can re-filter this widget without touching the rest of the dashboard.
       </p>

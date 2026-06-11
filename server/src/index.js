@@ -26,11 +26,18 @@ function sanitizeSql(sql) {
 }
 
 // Build the SQL fragment injected at the {{filters}} token from dashboard-level filters
-function buildFilters({ segment, from, to }) {
+function buildFilters({ segment, sub_segments, from, to }) {
   const parts = [];
   if (segment && segment !== 'ALL') {
     if (!/^[A-Za-z&\- ]{1,30}$/.test(segment)) throw new Error('Invalid segment.');
     parts.push(`AND segment = '${segment}'`);
+  }
+  if (sub_segments) {
+    const list = String(sub_segments).split(',').map((s) => s.trim()).filter(Boolean);
+    for (const s of list) {
+      if (!/^[A-Za-z&\- ]{1,30}$/.test(s)) throw new Error('Invalid sub-segment.');
+    }
+    if (list.length) parts.push(`AND sub_segment IN (${list.map((s) => `'${s}'`).join(', ')})`);
   }
   for (const [key, op] of [[from, '>='], [to, '<=']]) {
     if (key) {
@@ -126,15 +133,15 @@ app.delete('/api/cards/:id', (req, res) => {
 app.get('/api/cards/:id/data', (req, res) => {
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(req.params.id);
   if (!card) return res.status(404).json({ error: 'Card not found.' });
-  const { segment, from, to } = req.query;
+  const { segment, sub_segments, from, to } = req.query;
   try {
-    const rows = runQuery(card.sql_text, { segment, from, to });
+    const rows = runQuery(card.sql_text, { segment, sub_segments, from, to });
     const meta = {};
     // For KPI cards with a date window, compute same-window-last-year delta
     if (card.chart_type === 'kpi' && from && to) {
       const shift = (d) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`;
       try {
-        const prevRows = runQuery(card.sql_text, { segment, from: shift(from), to: shift(to) });
+        const prevRows = runQuery(card.sql_text, { segment, sub_segments, from: shift(from), to: shift(to) });
         const cur = Number(Object.values(rows[0] ?? {})[0] ?? 0);
         const prev = Number(Object.values(prevRows[0] ?? {})[0] ?? 0);
         if (prev > 0) {

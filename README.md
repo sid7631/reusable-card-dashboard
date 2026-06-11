@@ -47,8 +47,17 @@ Reseed demo data anytime with `npm run seed` (deterministic PRNG — same data e
   mode you can explicitly map which result column is the X axis and which numeric columns plot
   as Y series (stored as `xKey`/`yKeys` in the card config, inference is the fallback).
 - **On-card controls** — any card can opt into its own segment toggle and/or reporting-period
-  dropdown (Card Studio → "On-card controls"). These override the dashboard-level filters for
-  that widget only, and reset when the dashboard filters change.
+  dropdown (Card Studio → "On-card controls"), and the card creator chooses exactly which
+  segment chips (Total AXP / USCS / GCS / ICS) and period granularities (Month / Quarter /
+  Full year / YTD) are offered. These override the dashboard-level filters for that widget
+  only, and reset when the dashboard filters change.
+- **Segment toggles** — Total AXP and USCS are single-select; GCS and ICS open a multi-select
+  sub-segment breakdown (GCS: SBS/MM/G&L, ICS: Consumer/SBS/Corporate) that filters via
+  `sub_segment IN (...)`.
+- **Widget action panels** — every card's menu opens drill-down panels: **Export Data**
+  (CSV/Excel/PDF, column picker, "filters applied" metadata), **View SQL Script** (generated
+  query + parameters applied), and **Share** (recipient chips, permission, format, message,
+  read-only link toggle — mock send).
 
 ## API surface
 

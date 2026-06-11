@@ -5,8 +5,9 @@ import { api } from '../lib/api';
 import type { Card, CardData, ChartType, DashboardDetail, DashboardItem } from '../lib/types';
 import ChartRenderer from '../components/ChartRenderer';
 import CardFrame from '../components/CardFrame';
-import SegmentToggles from '../components/SegmentToggles';
-import PeriodSelect, { PERIODS, type Period } from '../components/PeriodSelect';
+import SegmentToggles, { segmentLabel, type SegmentSelection } from '../components/SegmentToggles';
+import PeriodSelect, { DEFAULT_PERIOD, type Period } from '../components/PeriodSelect';
+import type { CardContext } from '../components/CardActions';
 
 const Grid = WidthProvider(RGL);
 
@@ -14,9 +15,9 @@ const DEFAULT_SIZE: Partial<Record<ChartType, { w: number; h: number }>> = {
   kpi: { w: 3, h: 2 },
 };
 
-function DashboardCard({ card, segment, period, editMode, onRemove }: {
+function DashboardCard({ card, selection, period, editMode, onRemove }: {
   card: DashboardItem;
-  segment: string;
+  selection: SegmentSelection;
   period: Period;
   editMode: boolean;
   onRemove: () => void;
@@ -26,35 +27,50 @@ function DashboardCard({ card, segment, period, editMode, onRemove }: {
   const [error, setError] = useState<string>();
 
   // Card-level overrides (null = follow the dashboard); reset when dashboard filters change
-  const [segOverride, setSegOverride] = useState<string | null>(null);
+  const [segOverride, setSegOverride] = useState<SegmentSelection | null>(null);
   const [perOverride, setPerOverride] = useState<Period | null>(null);
-  useEffect(() => { setSegOverride(null); }, [segment]);
+  useEffect(() => { setSegOverride(null); }, [selection]);
   useEffect(() => { setPerOverride(null); }, [period]);
 
-  const effSegment = segOverride ?? segment;
+  const effSelection = segOverride ?? selection;
   const effPeriod = perOverride ?? period;
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setError(undefined);
-    api.cardData(card.id, { segment: effSegment, from: effPeriod.from, to: effPeriod.to })
+    api.cardData(card.id, {
+      segment: effSelection.segment,
+      subSegments: effSelection.subSegments,
+      from: effPeriod.from,
+      to: effPeriod.to,
+    })
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [card.id, effSegment, effPeriod]);
+  }, [card.id, effSelection, effPeriod]);
 
   const cardControls = card.config.controls;
   const controls = (cardControls?.segment || cardControls?.period) ? (
     <>
-      {cardControls?.segment ? <SegmentToggles compact value={effSegment} onChange={setSegOverride} /> : <span />}
-      {cardControls?.period && <PeriodSelect compact value={effPeriod} onChange={setPerOverride} />}
+      {cardControls?.segment
+        ? <SegmentToggles compact value={effSelection} onChange={setSegOverride} options={cardControls.segmentOptions} />
+        : <span />}
+      {cardControls?.period && (
+        <PeriodSelect compact value={effPeriod} onChange={setPerOverride} options={cardControls.periodOptions} />
+      )}
     </>
   ) : undefined;
 
+  const context: CardContext = {
+    segmentLabel: segmentLabel(effSelection),
+    periodLabel: effPeriod.label,
+    filters: (card.config.filters ?? []).map((f) => `${f.field} = '${f.value}'`),
+  };
+
   return (
-    <CardFrame card={card} rows={data.rows} controls={controls} editMode={editMode} onRemove={onRemove} loading={loading} error={error}>
+    <CardFrame card={card} rows={data.rows} controls={controls} context={context} editMode={editMode} onRemove={onRemove} loading={loading} error={error}>
       <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} />
     </CardFrame>
   );
@@ -65,8 +81,8 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<DashboardDetail | null>(null);
   const [items, setItems] = useState<DashboardItem[]>([]);
-  const [segment, setSegment] = useState('ALL');
-  const [period, setPeriod] = useState<Period>(PERIODS[0]);
+  const [selection, setSelection] = useState<SegmentSelection>({ segment: 'ALL', subSegments: [] });
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
   const [adminMode, setAdminMode] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [library, setLibrary] = useState<Card[]>([]);
@@ -163,7 +179,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <SegmentToggles value={segment} onChange={setSegment} />
+        <SegmentToggles value={selection} onChange={setSelection} />
         {adminMode && (
           <div className="flex items-center gap-2">
             <button
@@ -202,7 +218,7 @@ export default function DashboardPage() {
       >
         {items.map((it) => (
           <div key={String(it.id)}>
-            <DashboardCard card={it} segment={segment} period={period} editMode={adminMode} onRemove={() => removeCard(it.id)} />
+            <DashboardCard card={it} selection={selection} period={period} editMode={adminMode} onRemove={() => removeCard(it.id)} />
           </div>
         ))}
       </Grid>

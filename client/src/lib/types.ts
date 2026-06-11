@@ -16,7 +16,14 @@ export interface CardConfig {
   xKey?: string;
   yKeys?: string[];
   /** Interactive filter controls rendered on the card itself. */
-  controls?: { segment?: boolean; period?: boolean };
+  controls?: {
+    segment?: boolean;
+    /** Which segment chips the toggle offers, e.g. ['ALL','GCS','ICS']. Default: all. */
+    segmentOptions?: string[];
+    period?: boolean;
+    /** Which period granularities the dropdown offers. Default: all. */
+    periodOptions?: ('month' | 'quarter' | 'year' | 'ytd')[];
+  };
 }
 
 export interface Card {
@@ -68,6 +75,7 @@ export interface CardData {
 
 export interface GlobalFilters {
   segment: string; // 'ALL' | 'USCS' | 'GCS' | 'ICS'
+  subSegments?: string[]; // multi-select within GCS / ICS
   from?: string;
   to?: string;
   periodLabel: string;

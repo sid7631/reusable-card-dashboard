@@ -15,6 +15,7 @@ function filterParams(filters?: Partial<GlobalFilters>): string {
   if (!filters) return '';
   const params = new URLSearchParams();
   if (filters.segment && filters.segment !== 'ALL') params.set('segment', filters.segment);
+  if (filters.subSegments?.length) params.set('sub_segments', filters.subSegments.join(','));
   if (filters.from) params.set('from', filters.from);
   if (filters.to) params.set('to', filters.to);
   const qs = params.toString();

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { api } from '../lib/api';
 import type { CardConfig, CardFilter, ChartType, Dataset, Row } from '../lib/types';
+import { SCHEMES } from '../lib/format';
 import { buildSql, copilotRespond } from '../lib/builder';
 import ChartRenderer from '../components/ChartRenderer';
 import Modal from '../components/Modal';
@@ -175,6 +176,32 @@ export default function CardStudio() {
     const next = current.includes(k) ? current.filter((y) => y !== k) : [...current, k];
     updateConfig({ yKeys: next });
   };
+
+  // Color scheme picker, available from every creation mode
+  const schemeBlock = (
+    <div>
+      <span className={label}>Color scheme</span>
+      <div className="flex flex-wrap gap-1.5">
+        {SCHEMES.map((s) => {
+          const active = (config.scheme ?? 'classic') === s.id;
+          return (
+            <button key={s.id} onClick={() => updateConfig({ scheme: s.id === 'classic' ? undefined : s.id })}
+              title={s.label}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                active ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-white text-ink-soft hover:border-accent/50'
+              }`}>
+              <span className="flex">
+                {s.colors.slice(0, 3).map((c) => (
+                  <span key={c} className="-ml-1 size-3.5 rounded-full border border-white first:ml-0" style={{ background: c }} />
+                ))}
+              </span>
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   // On-card filter controls, available from every creation mode
   const SEGMENT_CHOICES = [['ALL', 'Total AXP'], ['USCS', 'USCS'], ['GCS', 'GCS'], ['ICS', 'ICS']] as const;
@@ -380,6 +407,8 @@ export default function CardStudio() {
                 </div>
               </div>
 
+              {schemeBlock}
+
               {controlsBlock}
 
               <div>
@@ -459,6 +488,8 @@ export default function CardStudio() {
                   </div>
                 )}
 
+                {schemeBlock}
+
                 {controlsBlock}
               </div>
             </div>
@@ -518,7 +549,7 @@ export default function CardStudio() {
                 <div className="size-6 animate-spin rounded-full border-2 border-line border-t-accent" />
               </div>
             ) : (
-              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} xKey={config.xKey} yKeys={config.yKeys} rank={config.rank} />
+              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} xKey={config.xKey} yKeys={config.yKeys} rank={config.rank} scheme={config.scheme} />
             )}
           </div>
           {rows.length > 0 && chartType !== 'table' && (

@@ -23,6 +23,29 @@ export function formatCell(value: unknown): string {
 /** Chart palette — deep enterprise blues with sharp accents. */
 export const PALETTE = ['#016fd0', '#00175a', '#6bb8f0', '#f5a623', '#1e8e5a', '#8c5bd8', '#c93a3a'];
 
+/**
+ * Selectable card color schemes. colors[0] = primary, colors[1] = deep shade,
+ * the rest are series accents. 'classic' is the default.
+ */
+export interface ColorScheme {
+  id: string;
+  label: string;
+  colors: string[];
+}
+
+export const SCHEMES: ColorScheme[] = [
+  { id: 'classic', label: 'Classic Blue', colors: PALETTE },
+  { id: 'emerald', label: 'Emerald', colors: ['#0e9f6e', '#064e3b', '#6ee7b7', '#f5a623', '#016fd0', '#8c5bd8', '#c93a3a'] },
+  { id: 'sunset', label: 'Sunset', colors: ['#ea580c', '#7c2d12', '#fdba74', '#016fd0', '#1e8e5a', '#8c5bd8', '#0e7490'] },
+  { id: 'violet', label: 'Violet', colors: ['#7c3aed', '#312e81', '#c4b5fd', '#f5a623', '#1e8e5a', '#016fd0', '#c93a3a'] },
+  { id: 'ocean', label: 'Ocean Teal', colors: ['#0e7490', '#164e63', '#67e8f9', '#f5a623', '#7c3aed', '#1e8e5a', '#c93a3a'] },
+  { id: 'slate', label: 'Slate Mono', colors: ['#475569', '#0f172a', '#94a3b8', '#016fd0', '#f5a623', '#1e8e5a', '#c93a3a'] },
+];
+
+export function schemeColors(id?: string): string[] {
+  return SCHEMES.find((s) => s.id === id)?.colors ?? PALETTE;
+}
+
 export function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return;
   const keys = Object.keys(rows[0]);

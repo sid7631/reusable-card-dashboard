@@ -48,6 +48,9 @@ Reseed demo data anytime with `npm run seed` (deterministic PRNG — same data e
   rank circles (Top Merchants), and per-row **$ YoY / % YoY** deltas. When a period is selected
   the API re-runs the card's SQL over the same window one year earlier (`meta.prevRows`) and
   the client joins the two result sets per row.
+- **Color schemes** — each card can pick a palette (Classic Blue default, plus Emerald, Sunset,
+  Violet, Ocean Teal, Slate Mono) in Card Studio; stored in the card config and applied to
+  bars, lines, donuts and the bar-list gradient/rank circles.
 - **Axis mapping** — the Builder exposes X-axis (category) / Y-axis (value) selectors; in SQL
   mode you can explicitly map which result column is the X axis and which numeric columns plot
   as Y series (stored as `xKey`/`yKeys` in the card config, inference is the fallback).

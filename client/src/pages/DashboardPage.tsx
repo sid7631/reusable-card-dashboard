@@ -55,10 +55,10 @@ function DashboardCard({ card, selection, period, editMode, onRemove }: {
   const controls = (cardControls?.segment || cardControls?.period) ? (
     <>
       {cardControls?.segment
-        ? <SegmentToggles compact value={effSelection} onChange={setSegOverride} options={cardControls.segmentOptions} />
+        ? <SegmentToggles compact value={effSelection} onChange={setSegOverride} options={cardControls.segmentOptions} scheme={card.config.scheme} />
         : <span />}
       {cardControls?.period && (
-        <PeriodSelect compact value={effPeriod} onChange={setPerOverride} options={cardControls.periodOptions} />
+        <PeriodSelect compact value={effPeriod} onChange={setPerOverride} options={cardControls.periodOptions} scheme={card.config.scheme} />
       )}
     </>
   ) : undefined;
@@ -71,7 +71,7 @@ function DashboardCard({ card, selection, period, editMode, onRemove }: {
 
   return (
     <CardFrame card={card} rows={data.rows} controls={controls} context={context} editMode={editMode} onRemove={onRemove} loading={loading} error={error}>
-      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} />
+      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} scheme={card.config.scheme} />
     </CardFrame>
   );
 }

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useRaiseGridItem } from '../lib/useRaiseGridItem';
+import { schemeColors } from '../lib/format';
 
 export interface SegmentSelection {
   segment: string; // 'ALL' | 'USCS' | 'GCS' | 'ICS'
@@ -30,9 +31,14 @@ interface Props {
   /** Which segment chips to offer (card-level configuration). Default: all. */
   options?: string[];
   compact?: boolean;
+  /** Card color scheme id — active/hover states adopt it. Default: classic blue. */
+  scheme?: string;
 }
 
-export default function SegmentToggles({ value, onChange, options, compact = false }: Props) {
+export default function SegmentToggles({ value, onChange, options, compact = false, scheme }: Props) {
+  const colors = schemeColors(scheme);
+  // Expose the scheme to Tailwind arbitrary-value classes (incl. hover states)
+  const schemeVars = { '--cs-a': colors[0], '--cs-d': colors[1] } as CSSProperties;
   const [openFor, setOpenFor] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useRaiseGridItem(Boolean(openFor), ref);
@@ -68,7 +74,7 @@ export default function SegmentToggles({ value, onChange, options, compact = fal
   };
 
   return (
-    <div ref={ref} className={`flex items-center rounded-full border border-line bg-white ${compact ? 'gap-0.5 p-0.5' : 'gap-1 p-1 shadow-sm'}`}>
+    <div ref={ref} style={schemeVars} className={`flex items-center rounded-full border border-line bg-white ${compact ? 'gap-0.5 p-0.5' : 'gap-1 p-1 shadow-sm'}`}>
       {visible.map((s) => {
         const active = value.segment === s.id;
         const multi = SUB_SEGMENTS[s.id];
@@ -79,7 +85,7 @@ export default function SegmentToggles({ value, onChange, options, compact = fal
               onClick={() => pick(s.id)}
               className={`flex items-center gap-1 rounded-full font-display font-semibold transition ${
                 compact ? 'px-2 py-0.5 text-[10px]' : 'px-4 py-1.5 text-sm'
-              } ${active ? 'bg-accent-deep text-white shadow' : 'text-ink-soft hover:bg-canvas hover:text-ink'}`}
+              } ${active ? 'bg-(--cs-d) text-white shadow' : 'text-ink-soft hover:bg-canvas hover:text-ink'}`}
             >
               {s.label}
               {subCount > 0 && <span className="rounded-full bg-white/25 px-1 text-[9px] leading-3">{subCount}</span>}
@@ -97,7 +103,7 @@ export default function SegmentToggles({ value, onChange, options, compact = fal
                   const checked = !value.subSegments?.length || value.subSegments.includes(sub);
                   return (
                     <label key={sub} className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1.5 text-sm text-ink transition hover:bg-canvas">
-                      <input type="checkbox" checked={checked} onChange={() => toggleSub(s.id, sub)} className="size-3.5 accent-[#016fd0]" />
+                      <input type="checkbox" checked={checked} onChange={() => toggleSub(s.id, sub)} className="size-3.5 accent-(--cs-a)" />
                       {sub}
                     </label>
                   );

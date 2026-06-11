@@ -19,6 +19,8 @@ export interface CardConfig {
   /** Explicit axis mapping (set in SQL mode); falls back to inference when absent. */
   xKey?: string;
   yKeys?: string[];
+  /** Color scheme id from SCHEMES; default 'classic'. */
+  scheme?: string;
   /** Interactive filter controls rendered on the card itself. */
   controls?: {
     segment?: boolean;

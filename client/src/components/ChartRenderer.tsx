@@ -3,7 +3,7 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import type { CardData, ChartType, Row } from '../lib/types';
-import { PALETTE, formatCell, formatMoney, formatNumber } from '../lib/format';
+import { formatCell, formatMoney, formatNumber, schemeColors } from '../lib/format';
 
 interface Props {
   chartType: ChartType;
@@ -14,6 +14,8 @@ interface Props {
   yKeys?: string[];
   /** Bar list: show rank circles (Top Merchants style). */
   rank?: boolean;
+  /** Color scheme id from SCHEMES; default 'classic'. */
+  scheme?: string;
 }
 
 function inferKeys(rows: Row[], xKey?: string, yKeys?: string[]): { labelKey: string; seriesKeys: string[] } {
@@ -66,7 +68,7 @@ function Kpi({ data }: { data: CardData }) {
 }
 
 /** Table-style list with an inline bar column and per-row YoY deltas (widgets 2.1–2.5 in the mockups). */
-function BarList({ data, rank = false, compact = false, xKey, yKeys }: { data: CardData; rank?: boolean; compact?: boolean; xKey?: string; yKeys?: string[] }) {
+function BarList({ data, rank = false, compact = false, xKey, yKeys, colors }: { data: CardData; rank?: boolean; compact?: boolean; xKey?: string; yKeys?: string[]; colors: string[] }) {
   const rows = data.rows;
   const { labelKey, seriesKeys } = inferKeys(rows, xKey, yKeys);
   const valueKey = seriesKeys[0];
@@ -97,7 +99,7 @@ function BarList({ data, rank = false, compact = false, xKey, yKeys }: { data: C
           return (
             <div key={i} className="flex items-center gap-3 border-b border-line/60 py-1.5 last:border-0">
               {rank && (
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent-deep font-display text-[10px] font-bold text-white">{i + 1}</span>
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full font-display text-[10px] font-bold text-white" style={{ background: colors[1] }}>{i + 1}</span>
               )}
               <span className={`shrink-0 truncate font-display text-xs font-bold text-ink ${compact ? 'w-16' : 'w-24'}`} title={String(r[labelKey])}>
                 {String(r[labelKey])}
@@ -106,7 +108,7 @@ function BarList({ data, rank = false, compact = false, xKey, yKeys }: { data: C
                 <span className="w-20 shrink-0 truncate text-xs font-medium text-ink-soft" title={String(r[subKey])}>{String(r[subKey])}</span>
               )}
               <div className="h-3 flex-1 overflow-hidden rounded-full bg-canvas">
-                <div className="h-full rounded-full bg-gradient-to-r from-accent-deep to-accent" style={{ width: `${Math.max((v / max) * 100, 2)}%` }} />
+                <div className="h-full rounded-full" style={{ width: `${Math.max((v / max) * 100, 2)}%`, background: `linear-gradient(90deg, ${colors[1]}, ${colors[0]})` }} />
               </div>
               <span className="flex w-20 shrink-0 flex-col items-end leading-tight">
                 <span className="font-display text-xs font-bold text-ink">{formatMoney(v)}</span>
@@ -151,14 +153,15 @@ function DataTable({ rows }: { rows: Row[] }) {
   );
 }
 
-export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys, rank = false }: Props) {
+export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys, rank = false, scheme }: Props) {
+  const colors = schemeColors(scheme);
   const rows = data.rows;
   if (chartType === 'kpi') return <Kpi data={data} />;
   if (!rows.length) {
     return <div className="flex h-full items-center justify-center text-sm text-ink-faint">No data for the selected filters</div>;
   }
   if (chartType === 'table') return <DataTable rows={rows} />;
-  if (chartType === 'barlist') return <BarList data={data} rank={rank} compact={compact} xKey={xKey} yKeys={yKeys} />;
+  if (chartType === 'barlist') return <BarList data={data} rank={rank} compact={compact} xKey={xKey} yKeys={yKeys} colors={colors} />;
 
   const { labelKey, seriesKeys } = inferKeys(rows, xKey, yKeys);
   if (!seriesKeys.length) return <DataTable rows={rows} />;
@@ -170,10 +173,10 @@ export default function ChartRenderer({ chartType, data, compact = false, xKey, 
         <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 48, bottom: 4, left: 8 }} barCategoryGap="28%">
           <XAxis type="number" hide />
           <YAxis type="category" dataKey={labelKey} width={compact ? 70 : 100} tickLine={false} axisLine={false} tick={axisStyle} />
-          <Tooltip content={<ChartTooltip />} cursor={{ fill: '#016fd00f' }} />
+          <Tooltip content={<ChartTooltip />} cursor={{ fill: colors[0] + '0f' }} />
           <Bar dataKey={seriesKeys[0]} radius={[0, 6, 6, 0]} label={{ position: 'right', fontSize: 11, fontFamily: 'IBM Plex Mono', fill: '#0a1c3f', formatter: (v: number) => formatNumber(v) }}>
             {rows.map((_, i) => (
-              <Cell key={i} fill={i === 0 ? PALETTE[0] : PALETTE[0] + (i % 2 ? 'aa' : 'cc')} />
+              <Cell key={i} fill={i === 0 ? colors[0] : colors[0] + (i % 2 ? 'aa' : 'cc')} />
             ))}
           </Bar>
         </BarChart>
@@ -188,9 +191,9 @@ export default function ChartRenderer({ chartType, data, compact = false, xKey, 
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dde4ee" />
           <XAxis dataKey={labelKey} tickLine={false} axisLine={false} tick={axisStyle} />
           <YAxis tickLine={false} axisLine={false} tick={axisStyle} tickFormatter={formatNumber} />
-          <Tooltip content={<ChartTooltip />} cursor={{ fill: '#016fd00f' }} />
+          <Tooltip content={<ChartTooltip />} cursor={{ fill: colors[0] + '0f' }} />
           {seriesKeys.map((k, i) => (
-            <Bar key={k} dataKey={k} fill={PALETTE[i % PALETTE.length]} radius={[6, 6, 0, 0]} />
+            <Bar key={k} dataKey={k} fill={colors[i % colors.length]} radius={[6, 6, 0, 0]} />
           ))}
           {multi && <Legend wrapperStyle={{ fontSize: 11 }} />}
         </BarChart>
@@ -209,9 +212,9 @@ export default function ChartRenderer({ chartType, data, compact = false, xKey, 
           <Tooltip content={<ChartTooltip />} />
           {seriesKeys.map((k, i) =>
             chartType === 'line' ? (
-              <Line key={k} type="monotone" dataKey={k} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={false} />
+              <Line key={k} type="monotone" dataKey={k} stroke={colors[i % colors.length]} strokeWidth={2} dot={false} />
             ) : (
-              <Area key={k} type="monotone" dataKey={k} stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]} fillOpacity={0.12} strokeWidth={2} />
+              <Area key={k} type="monotone" dataKey={k} stroke={colors[i % colors.length]} fill={colors[i % colors.length]} fillOpacity={0.12} strokeWidth={2} />
             ),
           )}
           {multi && <Legend wrapperStyle={{ fontSize: 11 }} />}
@@ -227,7 +230,7 @@ export default function ChartRenderer({ chartType, data, compact = false, xKey, 
           <Tooltip content={<ChartTooltip />} />
           <Pie data={rows} dataKey={seriesKeys[0]} nameKey={labelKey} innerRadius="58%" outerRadius="85%" paddingAngle={2} strokeWidth={0}>
             {rows.map((_, i) => (
-              <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+              <Cell key={i} fill={colors[i % colors.length]} />
             ))}
           </Pie>
           <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />

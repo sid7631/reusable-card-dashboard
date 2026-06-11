@@ -22,7 +22,7 @@ function CardPreview({ card }: { card: Card }) {
           <div className="size-5 animate-spin rounded-full border-2 border-line border-t-accent" />
         </div>
       ) : (
-        <ChartRenderer chartType={card.chart_type} data={data} compact xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} />
+        <ChartRenderer chartType={card.chart_type} data={data} compact xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} scheme={card.config.scheme} />
       )}
     </div>
   );

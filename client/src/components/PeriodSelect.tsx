@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useRaiseGridItem } from '../lib/useRaiseGridItem';
+import { schemeColors } from '../lib/format';
 
 export interface Period {
   label: string;
@@ -37,9 +38,14 @@ interface Props {
   /** Which granularity sections to offer (card-level configuration). Default: all. */
   options?: PeriodGranularity[];
   compact?: boolean;
+  /** Card color scheme id — active/hover states adopt it. Default: classic blue. */
+  scheme?: string;
 }
 
-export default function PeriodSelect({ value, onChange, options, compact = false }: Props) {
+export default function PeriodSelect({ value, onChange, options, compact = false, scheme }: Props) {
+  const colors = schemeColors(scheme);
+  // Expose the scheme to Tailwind arbitrary-value classes (incl. hover states)
+  const schemeVars = { '--cs-a': colors[0], '--cs-d': colors[1], '--cs-s': colors[0] + '1a' } as CSSProperties;
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<Period>(value);
   const ref = useRef<HTMLDivElement>(null);
@@ -58,10 +64,10 @@ export default function PeriodSelect({ value, onChange, options, compact = false
   const sections = SECTIONS.filter((s) => !options?.length || options.includes(s.id));
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} style={schemeVars} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center rounded-full border border-line bg-white font-display font-semibold text-ink transition hover:border-accent ${
+        className={`flex items-center rounded-full border border-line bg-white font-display font-semibold text-ink transition hover:border-(--cs-a) ${
           compact ? 'gap-1 px-2.5 py-0.5 text-[10px]' : 'gap-2 px-4 py-2 text-sm shadow-sm'
         }`}
       >
@@ -79,7 +85,7 @@ export default function PeriodSelect({ value, onChange, options, compact = false
         <div className="rise-in absolute right-0 z-40 mt-2 w-[340px] rounded-2xl border border-line bg-white p-4 shadow-xl">
           <div className="mb-3 flex items-center justify-between">
             <p className="font-display text-xs font-bold uppercase tracking-wide text-ink-soft">Reporting period</p>
-            <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-[10px] font-semibold text-accent">{pending.label}</span>
+            <span className="rounded-full bg-(--cs-s) px-2.5 py-0.5 text-[10px] font-semibold text-(--cs-a)">{pending.label}</span>
           </div>
           <div className="max-h-72 space-y-3 overflow-auto pr-1">
             {sections.map((sec) => (
@@ -92,8 +98,8 @@ export default function PeriodSelect({ value, onChange, options, compact = false
                       onClick={() => setPending(p)}
                       className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                         pending.label === p.label
-                          ? 'border-accent bg-accent text-white'
-                          : 'border-line bg-white text-ink-soft hover:border-accent/50 hover:text-ink'
+                          ? 'border-(--cs-a) bg-(--cs-a) text-white'
+                          : 'border-line bg-white text-ink-soft hover:border-(--cs-a) hover:text-ink'
                       }`}
                     >
                       {p.label}
@@ -113,7 +119,7 @@ export default function PeriodSelect({ value, onChange, options, compact = false
             </button>
             <button
               onClick={() => { onChange(pending); setOpen(false); }}
-              className="rounded-lg bg-accent px-4 py-1.5 text-xs font-bold text-white transition hover:bg-accent-deep"
+              className="rounded-lg bg-(--cs-a) px-4 py-1.5 text-xs font-bold text-white transition hover:bg-(--cs-d)"
             >
               Apply
             </button>

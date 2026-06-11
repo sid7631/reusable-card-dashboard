@@ -28,7 +28,12 @@ export function buildSql(chartType: ChartType, cfg: CardConfig): string {
   const orderBy = isTime ? 'label ASC' : 'value DESC';
   const limit = cfg.limit ? `\nLIMIT ${cfg.limit}` : '';
 
-  return `SELECT ${dimExpr} AS label, ${aggExpr} AS value\nFROM transactions\nWHERE 1=1${whereSql} {{filters}}\nGROUP BY label\nORDER BY ${orderBy}${limit}`;
+  // Bar lists can carry a secondary category column (industry → sub-industry)
+  const sub = chartType === 'barlist' && cfg.dimension2 && cfg.dimension2 !== dim ? cfg.dimension2 : undefined;
+  const selectSub = sub ? `, ${sub} AS sublabel` : '';
+  const groupBy = sub ? 'label, sublabel' : 'label';
+
+  return `SELECT ${dimExpr} AS label${selectSub}, ${aggExpr} AS value\nFROM transactions\nWHERE 1=1${whereSql} {{filters}}\nGROUP BY ${groupBy}\nORDER BY ${orderBy}${limit}`;
 }
 
 /** Strip the filters token for ad-hoc preview runs (server also handles it). */
@@ -95,11 +100,12 @@ export function copilotRespond(prompt: string): CopilotResult {
   if (hit) {
     const [, dimension, name] = hit;
     const limit = topMatch ? Number(topMatch[1]) : dimension === 'merchant' ? 5 : undefined;
-    const chartType: ChartType = wantsDonut ? 'donut' : dimension === 'vintage' ? 'column' : 'bar';
+    const chartType: ChartType = wantsDonut ? 'donut' : 'barlist';
+    const rank = chartType === 'barlist' && (Boolean(topMatch) || dimension === 'merchant');
     return {
-      message: `Here you go — ${name.toLowerCase()}${limit ? ` (top ${limit})` : ''}${filterNote} as a ${chartType} chart. Tweak anything in the Builder tab, or hit Save to add it to your card library.`,
+      message: `Here you go — ${name.toLowerCase()}${limit ? ` (top ${limit})` : ''}${filterNote} as a ${chartType === 'barlist' ? 'bar list with YoY deltas' : 'donut chart'}. Tweak anything in the Builder tab, or hit Save to add it to your card library.`,
       chartType,
-      config: { dimension, metric: 'amount', agg: 'SUM', limit, filters },
+      config: { dimension, metric: 'amount', agg: 'SUM', limit, rank, filters },
       suggestedName: name,
     };
   }

@@ -12,6 +12,8 @@ interface Props {
   /** Explicit axis mapping — overrides inference when the keys exist in the result. */
   xKey?: string;
   yKeys?: string[];
+  /** Bar list: show rank circles (Top Merchants style). */
+  rank?: boolean;
 }
 
 function inferKeys(rows: Row[], xKey?: string, yKeys?: string[]): { labelKey: string; seriesKeys: string[] } {
@@ -63,6 +65,65 @@ function Kpi({ data }: { data: CardData }) {
   );
 }
 
+/** Table-style list with an inline bar column and per-row YoY deltas (widgets 2.1–2.5 in the mockups). */
+function BarList({ data, rank = false, compact = false, xKey, yKeys }: { data: CardData; rank?: boolean; compact?: boolean; xKey?: string; yKeys?: string[] }) {
+  const rows = data.rows;
+  const { labelKey, seriesKeys } = inferKeys(rows, xKey, yKeys);
+  const valueKey = seriesKeys[0];
+  if (!valueKey) return <DataTable rows={rows} />;
+  const subKey = Object.keys(rows[0]).find((k) => k !== labelKey && typeof rows[0][k] === 'string');
+  // Rows can repeat the primary label (industry → sub-industry), so key on both
+  const rowKey = (r: Row) => `${r[labelKey]}|${subKey ? r[subKey] : ''}`;
+  const prev = new Map((data.meta.prevRows ?? []).map((r) => [rowKey(r), Number(r[valueKey])]));
+  const hasDelta = prev.size > 0;
+  const max = Math.max(...rows.map((r) => Number(r[valueKey]) || 0), 1);
+
+  return (
+    <div className="flex h-full flex-col overflow-auto px-1">
+      <div className="sticky top-0 z-[1] flex items-center gap-3 border-b border-line bg-white pb-1.5 pt-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-ink-faint">
+        {rank && <span className="w-6 shrink-0">Rank</span>}
+        <span className={`shrink-0 ${compact ? 'w-16' : 'w-24'}`}>{labelKey === 'label' ? 'Category' : labelKey.replaceAll('_', ' ')}</span>
+        {subKey && !compact && <span className="w-20 shrink-0">{subKey === 'sublabel' ? 'Sub-category' : subKey.replaceAll('_', ' ')}</span>}
+        <span className="flex-1">Spend</span>
+        <span className="shrink-0 text-right">{hasDelta ? 'Value / $ YoY / % YoY' : 'Value'}</span>
+      </div>
+      <div>
+        {rows.slice(0, 12).map((r, i) => {
+          const v = Number(r[valueKey]) || 0;
+          const p = prev.get(rowKey(r));
+          const dAbs = p && p > 0 ? v - p : undefined;
+          const dPct = p && p > 0 ? ((v - p) / p) * 100 : undefined;
+          const up = (dAbs ?? 0) >= 0;
+          return (
+            <div key={i} className="flex items-center gap-3 border-b border-line/60 py-1.5 last:border-0">
+              {rank && (
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent-deep font-display text-[10px] font-bold text-white">{i + 1}</span>
+              )}
+              <span className={`shrink-0 truncate font-display text-xs font-bold text-ink ${compact ? 'w-16' : 'w-24'}`} title={String(r[labelKey])}>
+                {String(r[labelKey])}
+              </span>
+              {subKey && !compact && (
+                <span className="w-20 shrink-0 truncate text-xs font-medium text-ink-soft" title={String(r[subKey])}>{String(r[subKey])}</span>
+              )}
+              <div className="h-3 flex-1 overflow-hidden rounded-full bg-canvas">
+                <div className="h-full rounded-full bg-gradient-to-r from-accent-deep to-accent" style={{ width: `${Math.max((v / max) * 100, 2)}%` }} />
+              </div>
+              <span className="flex w-20 shrink-0 flex-col items-end leading-tight">
+                <span className="font-display text-xs font-bold text-ink">{formatMoney(v)}</span>
+                {dAbs !== undefined && dPct !== undefined && (
+                  <span className={`text-[10px] font-semibold ${up ? 'text-positive' : 'text-negative'}`}>
+                    {up ? '+' : '-'}{formatMoney(Math.abs(dAbs))} {up ? '+' : ''}{dPct.toFixed(0)}%
+                  </span>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function DataTable({ rows }: { rows: Row[] }) {
   if (!rows.length) return null;
   const keys = Object.keys(rows[0]);
@@ -90,13 +151,14 @@ function DataTable({ rows }: { rows: Row[] }) {
   );
 }
 
-export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys }: Props) {
+export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys, rank = false }: Props) {
   const rows = data.rows;
   if (chartType === 'kpi') return <Kpi data={data} />;
   if (!rows.length) {
     return <div className="flex h-full items-center justify-center text-sm text-ink-faint">No data for the selected filters</div>;
   }
   if (chartType === 'table') return <DataTable rows={rows} />;
+  if (chartType === 'barlist') return <BarList data={data} rank={rank} compact={compact} xKey={xKey} yKeys={yKeys} />;
 
   const { labelKey, seriesKeys } = inferKeys(rows, xKey, yKeys);
   if (!seriesKeys.length) return <DataTable rows={rows} />;

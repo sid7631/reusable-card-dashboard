@@ -137,17 +137,22 @@ app.get('/api/cards/:id/data', (req, res) => {
   try {
     const rows = runQuery(card.sql_text, { segment, sub_segments, from, to });
     const meta = {};
-    // For KPI cards with a date window, compute same-window-last-year delta
-    if (card.chart_type === 'kpi' && from && to) {
+    // With a date window, run the same query over the same window one year earlier.
+    // KPI cards get a single delta; other cards get prevRows for per-row YoY.
+    if (from && to) {
       const shift = (d) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`;
       try {
         const prevRows = runQuery(card.sql_text, { segment, sub_segments, from: shift(from), to: shift(to) });
-        const cur = Number(Object.values(rows[0] ?? {})[0] ?? 0);
-        const prev = Number(Object.values(prevRows[0] ?? {})[0] ?? 0);
-        if (prev > 0) {
-          meta.prevValue = prev;
-          meta.deltaAbs = cur - prev;
-          meta.deltaPct = ((cur - prev) / prev) * 100;
+        if (card.chart_type === 'kpi') {
+          const cur = Number(Object.values(rows[0] ?? {})[0] ?? 0);
+          const prev = Number(Object.values(prevRows[0] ?? {})[0] ?? 0);
+          if (prev > 0) {
+            meta.prevValue = prev;
+            meta.deltaAbs = cur - prev;
+            meta.deltaPct = ((cur - prev) / prev) * 100;
+          }
+        } else {
+          meta.prevRows = prevRows;
         }
       } catch {
         // YoY comparison is best-effort

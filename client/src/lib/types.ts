@@ -1,4 +1,4 @@
-export type ChartType = 'kpi' | 'bar' | 'column' | 'line' | 'area' | 'donut' | 'table';
+export type ChartType = 'kpi' | 'barlist' | 'bar' | 'column' | 'line' | 'area' | 'donut' | 'table';
 
 export interface CardFilter {
   field: string;
@@ -7,6 +7,10 @@ export interface CardFilter {
 
 export interface CardConfig {
   dimension?: string;
+  /** Optional secondary category for bar lists (e.g. industry → sub-industry). */
+  dimension2?: string;
+  /** Show rank circles in bar lists (Top Merchants style). */
+  rank?: boolean;
   timeGrain?: 'day' | 'month';
   metric?: string;
   agg?: 'SUM' | 'AVG' | 'COUNT';
@@ -70,7 +74,13 @@ export type Row = Record<string, unknown>;
 
 export interface CardData {
   rows: Row[];
-  meta: { prevValue?: number; deltaAbs?: number; deltaPct?: number };
+  meta: {
+    prevValue?: number;
+    deltaAbs?: number;
+    deltaPct?: number;
+    /** Same query run over the prior-year window — powers per-row YoY deltas. */
+    prevRows?: Row[];
+  };
 }
 
 export interface GlobalFilters {

@@ -11,6 +11,7 @@ type Mode = 'builder' | 'sql' | 'copilot';
 
 const CHART_TYPES: { id: ChartType; label: string }[] = [
   { id: 'kpi', label: 'KPI' },
+  { id: 'barlist', label: 'Bar list' },
   { id: 'bar', label: 'Bar' },
   { id: 'column', label: 'Column' },
   { id: 'line', label: 'Line' },
@@ -296,10 +297,26 @@ export default function CardStudio() {
 
               {chartType !== 'kpi' && (
                 <div>
-                  <span className={label}>{chartType === 'bar' ? 'Y-axis — category (horizontal bars)' : 'X-axis — category'}</span>
+                  <span className={label}>{chartType === 'bar' ? 'Y-axis — category (horizontal bars)' : chartType === 'barlist' ? 'Category (rows)' : 'X-axis — category'}</span>
                   <select value={config.dimension} onChange={(e) => updateConfig({ dimension: e.target.value })} className={field}>
                     {DIMENSIONS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
                   </select>
+                  {chartType === 'barlist' && (
+                    <div className="mt-2 space-y-2">
+                      <select value={config.dimension2 ?? ''} onChange={(e) => updateConfig({ dimension2: e.target.value || undefined })} className={field}>
+                        <option value="">No sub-category</option>
+                        {DIMENSIONS.filter((d) => d.id !== 'txn_date' && d.id !== config.dimension).map((d) => (
+                          <option key={d.id} value={d.id}>Sub-category: {d.label}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => updateConfig({ rank: !config.rank })}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                          config.rank ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-white text-ink-soft hover:border-accent/50'
+                        }`}>
+                        {config.rank ? '✓ ' : ''}Show rank numbers
+                      </button>
+                    </div>
+                  )}
                   {config.dimension === 'txn_date' && (
                     <div className="mt-2 flex gap-1.5">
                       {(['day', 'month'] as const).map((g) => (
@@ -501,7 +518,7 @@ export default function CardStudio() {
                 <div className="size-6 animate-spin rounded-full border-2 border-line border-t-accent" />
               </div>
             ) : (
-              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} xKey={config.xKey} yKeys={config.yKeys} />
+              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} xKey={config.xKey} yKeys={config.yKeys} rank={config.rank} />
             )}
           </div>
           {rows.length > 0 && chartType !== 'table' && (

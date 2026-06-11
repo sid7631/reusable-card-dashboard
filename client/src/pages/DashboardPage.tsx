@@ -71,7 +71,7 @@ function DashboardCard({ card, selection, period, editMode, onRemove }: {
 
   return (
     <CardFrame card={card} rows={data.rows} controls={controls} context={context} editMode={editMode} onRemove={onRemove} loading={loading} error={error}>
-      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} />
+      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} />
     </CardFrame>
   );
 }

@@ -1,0 +1,7 @@
+*.HEIC
+client/node_modules/
+client/.env
+server/node_modules/
+screenshots/
+README.md
+.DS_Store

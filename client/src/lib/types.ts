@@ -1,0 +1,69 @@
+export type ChartType = 'kpi' | 'bar' | 'column' | 'line' | 'area' | 'donut' | 'table';
+
+export interface CardFilter {
+  field: string;
+  value: string;
+}
+
+export interface CardConfig {
+  dimension?: string;
+  timeGrain?: 'day' | 'month';
+  metric?: string;
+  agg?: 'SUM' | 'AVG' | 'COUNT';
+  limit?: number;
+  filters?: CardFilter[];
+}
+
+export interface Card {
+  id: number;
+  name: string;
+  description: string;
+  chart_type: ChartType;
+  dataset: string;
+  config: CardConfig;
+  sql_text: string;
+  created_via: 'builder' | 'sql' | 'copilot';
+  created_at: string;
+}
+
+export interface Dashboard {
+  id: number;
+  name: string;
+  description: string;
+  created_at: string;
+  card_count?: number;
+}
+
+export interface DashboardItem extends Card {
+  item_id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface DashboardDetail extends Dashboard {
+  items: DashboardItem[];
+}
+
+export interface Dataset {
+  name: string;
+  label: string;
+  rowCount: number;
+  columns: { name: string; type: string }[];
+  dimensionValues: Record<string, string[]>;
+}
+
+export type Row = Record<string, unknown>;
+
+export interface CardData {
+  rows: Row[];
+  meta: { prevValue?: number; deltaAbs?: number; deltaPct?: number };
+}
+
+export interface GlobalFilters {
+  segment: string; // 'ALL' | 'USCS' | 'GCS' | 'ICS'
+  from?: string;
+  to?: string;
+  periodLabel: string;
+}

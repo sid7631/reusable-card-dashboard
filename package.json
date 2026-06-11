@@ -1,0 +1,12 @@
+{
+  "name": "reusable-card-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix server & npm run dev --prefix client & wait",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "seed": "npm run seed --prefix server",
+    "setup": "npm install --prefix server && npm install --prefix client"
+  }
+}

@@ -1,4 +1,8 @@
+import { createContext } from 'react';
 import { SCHEMES } from './format';
+
+/** Current app theme id — cards without an explicit scheme follow it. */
+export const AppThemeContext = createContext('classic');
 
 /**
  * App-level themes reuse the card color schemes: accent = primary, deep shade

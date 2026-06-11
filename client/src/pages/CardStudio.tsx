@@ -177,28 +177,36 @@ export default function CardStudio() {
     updateConfig({ yKeys: next });
   };
 
-  // Color scheme picker, available from every creation mode
+  // Color scheme picker, available from every creation mode.
+  // "Auto" (no stored scheme) follows the app-level theme; explicit schemes pin the card.
+  const schemeChip = (active: boolean) =>
+    `flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+      active ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-white text-ink-soft hover:border-accent/50'
+    }`;
   const schemeBlock = (
     <div>
       <span className={label}>Color scheme</span>
       <div className="flex flex-wrap gap-1.5">
-        {SCHEMES.map((s) => {
-          const active = (config.scheme ?? 'classic') === s.id;
-          return (
-            <button key={s.id} onClick={() => updateConfig({ scheme: s.id === 'classic' ? undefined : s.id })}
-              title={s.label}
-              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                active ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-white text-ink-soft hover:border-accent/50'
-              }`}>
-              <span className="flex">
-                {s.colors.slice(0, 3).map((c) => (
-                  <span key={c} className="-ml-1 size-3.5 rounded-full border border-white first:ml-0" style={{ background: c }} />
-                ))}
-              </span>
-              {s.label}
-            </button>
-          );
-        })}
+        <button onClick={() => updateConfig({ scheme: undefined })} title="Follow the app-level theme"
+          className={schemeChip(!config.scheme)}>
+          <span className="flex">
+            {['var(--color-accent)', 'var(--color-accent-deep)', 'var(--color-accent-soft)'].map((c) => (
+              <span key={c} className="-ml-1 size-3.5 rounded-full border border-white first:ml-0" style={{ background: c }} />
+            ))}
+          </span>
+          Auto (app theme)
+        </button>
+        {SCHEMES.map((s) => (
+          <button key={s.id} onClick={() => updateConfig({ scheme: s.id })} title={`Always ${s.label}, regardless of app theme`}
+            className={schemeChip(config.scheme === s.id)}>
+            <span className="flex">
+              {s.colors.slice(0, 3).map((c) => (
+                <span key={c} className="-ml-1 size-3.5 rounded-full border border-white first:ml-0" style={{ background: c }} />
+              ))}
+            </span>
+            {s.label}
+          </button>
+        ))}
       </div>
     </div>
   );

@@ -1,9 +1,11 @@
+import { useContext } from 'react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import type { CardData, ChartType, Row } from '../lib/types';
 import { formatCell, formatMoney, formatNumber, schemeColors } from '../lib/format';
+import { AppThemeContext } from '../lib/theme';
 
 interface Props {
   chartType: ChartType;
@@ -154,7 +156,9 @@ function DataTable({ rows }: { rows: Row[] }) {
 }
 
 export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys, rank = false, scheme }: Props) {
-  const colors = schemeColors(scheme);
+  // No explicit card scheme → follow the app-level theme palette
+  const appTheme = useContext(AppThemeContext);
+  const colors = schemeColors(scheme ?? appTheme);
   const rows = data.rows;
   if (chartType === 'kpi') return <Kpi data={data} />;
   if (!rows.length) {

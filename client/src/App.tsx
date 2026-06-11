@@ -4,7 +4,7 @@ import DashboardsPage from './pages/DashboardsPage';
 import DashboardPage from './pages/DashboardPage';
 import CardsPage from './pages/CardsPage';
 import CardStudio from './pages/CardStudio';
-import { APP_THEMES, applyAppTheme, loadAppTheme } from './lib/theme';
+import { APP_THEMES, AppThemeContext, applyAppTheme, loadAppTheme } from './lib/theme';
 
 function NavItem({ to, label, icon, collapsed }: { to: string; label: string; icon: string; collapsed: boolean }) {
   return (
@@ -39,6 +39,7 @@ export default function App() {
   }, [collapsed]);
 
   return (
+    <AppThemeContext.Provider value={theme}>
     <div className="flex min-h-screen">
       <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-accent-deep py-6 transition-all duration-300 ${collapsed ? 'w-16 px-2.5' : 'w-56 px-4'}`}>
         <button
@@ -106,5 +107,6 @@ export default function App() {
         </Routes>
       </main>
     </div>
+    </AppThemeContext.Provider>
   );
 }

@@ -4,6 +4,7 @@ import DashboardsPage from './pages/DashboardsPage';
 import DashboardPage from './pages/DashboardPage';
 import CardsPage from './pages/CardsPage';
 import CardStudio from './pages/CardStudio';
+import { APP_THEMES, applyAppTheme, loadAppTheme } from './lib/theme';
 
 function NavItem({ to, label, icon, collapsed }: { to: string; label: string; icon: string; collapsed: boolean }) {
   return (
@@ -26,6 +27,9 @@ function NavItem({ to, label, icon, collapsed }: { to: string; label: string; ic
 
 export default function App() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sb-sidebar-collapsed') === '1');
+  const [theme, setTheme] = useState(loadAppTheme);
+
+  useEffect(() => { applyAppTheme(theme); }, [theme]);
 
   useEffect(() => {
     localStorage.setItem('sb-sidebar-collapsed', collapsed ? '1' : '0');
@@ -62,13 +66,34 @@ export default function App() {
           <NavItem to="/dashboards" label="Dashboards" icon="M2 2h5v7H2zM9 2h5v4H9zM9 8h5v6H9zM2 11h5v3H2z" collapsed={collapsed} />
           <NavItem to="/cards" label="Card Library" icon="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2zM2 6.5h12" collapsed={collapsed} />
         </nav>
-        {!collapsed && (
-          <div className="mt-auto rounded-xl bg-white/5 p-3.5">
-            <p className="text-[11px] leading-relaxed text-sky-200/70">
-              Cards are stored once and reused across dashboards — data flows from SQLite through the SQL on each card.
-            </p>
+        <div className="mt-auto space-y-3">
+          <div className={collapsed ? '' : 'rounded-xl bg-white/5 p-3.5'}>
+            {!collapsed && (
+              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300/60">App theme</p>
+            )}
+            <div className={`flex gap-1.5 ${collapsed ? 'flex-col items-center' : 'flex-wrap'}`}>
+              {APP_THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  title={t.label}
+                  aria-label={`Theme: ${t.label}`}
+                  className={`size-5 rounded-full transition hover:scale-110 ${
+                    theme === t.id ? 'ring-2 ring-white ring-offset-2 ring-offset-accent-deep' : 'opacity-70 hover:opacity-100'
+                  }`}
+                  style={{ background: `linear-gradient(135deg, ${t.accent} 55%, ${t.deep} 55%)` }}
+                />
+              ))}
+            </div>
           </div>
-        )}
+          {!collapsed && (
+            <div className="rounded-xl bg-white/5 p-3.5">
+              <p className="text-[11px] leading-relaxed text-sky-200/70">
+                Cards are stored once and reused across dashboards — data flows from SQLite through the SQL on each card.
+              </p>
+            </div>
+          )}
+        </div>
       </aside>
       <main className={`flex-1 transition-all duration-300 ${collapsed ? 'ml-16' : 'ml-56'}`}>
         <Routes>

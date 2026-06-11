@@ -43,9 +43,11 @@ interface Props {
 }
 
 export default function PeriodSelect({ value, onChange, options, compact = false, scheme }: Props) {
+  // Card scheme wins; otherwise follow the app-level theme variables
   const colors = schemeColors(scheme);
-  // Expose the scheme to Tailwind arbitrary-value classes (incl. hover states)
-  const schemeVars = { '--cs-a': colors[0], '--cs-d': colors[1], '--cs-s': colors[0] + '1a' } as CSSProperties;
+  const schemeVars = (scheme
+    ? { '--cs-a': colors[0], '--cs-d': colors[1], '--cs-s': colors[0] + '1a' }
+    : { '--cs-a': 'var(--color-accent)', '--cs-d': 'var(--color-accent-deep)', '--cs-s': 'var(--color-accent-soft)' }) as CSSProperties;
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<Period>(value);
   const ref = useRef<HTMLDivElement>(null);

@@ -36,9 +36,11 @@ interface Props {
 }
 
 export default function SegmentToggles({ value, onChange, options, compact = false, scheme }: Props) {
+  // Card scheme wins; otherwise follow the app-level theme variables
   const colors = schemeColors(scheme);
-  // Expose the scheme to Tailwind arbitrary-value classes (incl. hover states)
-  const schemeVars = { '--cs-a': colors[0], '--cs-d': colors[1] } as CSSProperties;
+  const schemeVars = (scheme
+    ? { '--cs-a': colors[0], '--cs-d': colors[1] }
+    : { '--cs-a': 'var(--color-accent)', '--cs-d': 'var(--color-accent-deep)' }) as CSSProperties;
   const [openFor, setOpenFor] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useRaiseGridItem(Boolean(openFor), ref);

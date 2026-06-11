@@ -166,6 +166,38 @@ export default function CardStudio() {
 
   const dimValues = (f: CardFilter): string[] => dataset?.dimensionValues[f.field] ?? [];
 
+  const resultColumns = rows.length ? Object.keys(rows[0]) : [];
+  const numericColumns = resultColumns.filter((k) => typeof rows[0]?.[k] === 'number');
+
+  const toggleYKey = (k: string) => {
+    const current = config.yKeys?.length ? config.yKeys : numericColumns;
+    const next = current.includes(k) ? current.filter((y) => y !== k) : [...current, k];
+    updateConfig({ yKeys: next });
+  };
+
+  // On-card filter controls, available from every creation mode
+  const controlsBlock = (
+    <div>
+      <span className={label}>On-card controls</span>
+      <div className="flex flex-wrap gap-2">
+        {([['segment', 'Segment toggle'], ['period', 'Period dropdown']] as const).map(([key, text]) => {
+          const on = Boolean(config.controls?.[key]);
+          return (
+            <button key={key} onClick={() => updateConfig({ controls: { ...config.controls, [key]: !on } })}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                on ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-white text-ink-soft hover:border-accent/50'
+              }`}>
+              {on ? '✓ ' : ''}{text}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[11px] text-ink-faint">
+        Render interactive toggles on the card itself — viewers can re-filter this widget without touching the rest of the dashboard.
+      </p>
+    </div>
+  );
+
   return (
     <div className="flex h-screen flex-col">
       {/* Studio header */}
@@ -221,7 +253,7 @@ export default function CardStudio() {
 
               {chartType !== 'kpi' && (
                 <div>
-                  <span className={label}>Group by (dimension)</span>
+                  <span className={label}>{chartType === 'bar' ? 'Y-axis — category (horizontal bars)' : 'X-axis — category'}</span>
                   <select value={config.dimension} onChange={(e) => updateConfig({ dimension: e.target.value })} className={field}>
                     {DIMENSIONS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
                   </select>
@@ -240,18 +272,15 @@ export default function CardStudio() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <span className={label}>Aggregation</span>
-                  <select value={config.agg} onChange={(e) => updateConfig({ agg: e.target.value as CardConfig['agg'] })} className={field}>
+              <div>
+                <span className={label}>{chartType === 'kpi' ? 'Value' : chartType === 'bar' ? 'X-axis — value' : 'Y-axis — value'}</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <select value={config.agg} onChange={(e) => updateConfig({ agg: e.target.value as CardConfig['agg'] })} className={field} aria-label="Aggregation">
                     <option value="SUM">SUM</option>
                     <option value="AVG">AVG</option>
                     <option value="COUNT">COUNT</option>
                   </select>
-                </div>
-                <div>
-                  <span className={label}>Metric</span>
-                  <select value={config.metric} onChange={(e) => updateConfig({ metric: e.target.value })} className={field} disabled={config.agg === 'COUNT'}>
+                  <select value={config.metric} onChange={(e) => updateConfig({ metric: e.target.value })} className={field} disabled={config.agg === 'COUNT'} aria-label="Metric">
                     <option value="amount">amount</option>
                   </select>
                 </div>
@@ -291,6 +320,8 @@ export default function CardStudio() {
                 </div>
               </div>
 
+              {controlsBlock}
+
               <div>
                 <span className={label}>Generated SQL</span>
                 <pre className="overflow-auto rounded-xl bg-accent-deep p-3.5 font-mono text-[11px] leading-relaxed text-sky-100">{sqlText}</pre>
@@ -321,18 +352,54 @@ export default function CardStudio() {
                   options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: 'IBM Plex Mono', lineNumbers: 'on', scrollBeyondLastLine: false, padding: { top: 12 } }}
                 />
               </div>
-              <div className="border-t border-line px-5 py-3">
-                <span className={label}>Render result as</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {CHART_TYPES.map((t) => (
-                    <button key={t.id} onClick={() => setChartType(t.id)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                        chartType === t.id ? 'border-accent bg-accent text-white' : 'border-line bg-white text-ink-soft hover:border-accent/50'
-                      }`}>
-                      {t.label}
-                    </button>
-                  ))}
+              <div className="max-h-72 space-y-4 overflow-auto border-t border-line px-5 py-3">
+                <div>
+                  <span className={label}>Render result as</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CHART_TYPES.map((t) => (
+                      <button key={t.id} onClick={() => setChartType(t.id)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                          chartType === t.id ? 'border-accent bg-accent text-white' : 'border-line bg-white text-ink-soft hover:border-accent/50'
+                        }`}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {rows.length > 0 && !['kpi', 'table'].includes(chartType) && (
+                  <div>
+                    <span className={label}>Axis mapping</span>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-ink-soft">
+                        X axis
+                        <select value={config.xKey ?? ''} onChange={(e) => updateConfig({ xKey: e.target.value || undefined })}
+                          className={`${field} !w-36 !py-1.5`}>
+                          <option value="">Auto</option>
+                          {resultColumns.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </label>
+                      <div className="flex items-center gap-2 text-xs font-semibold text-ink-soft">
+                        Y axis
+                        <div className="flex flex-wrap gap-1.5">
+                          {numericColumns.map((c) => {
+                            const active = (config.yKeys?.length ? config.yKeys : numericColumns).includes(c);
+                            return (
+                              <button key={c} onClick={() => toggleYKey(c)}
+                                className={`rounded-md border px-2 py-1 font-mono text-[11px] transition ${
+                                  active ? 'border-accent bg-accent-soft text-accent' : 'border-line text-ink-faint hover:border-accent/50'
+                                }`}>
+                                {c}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {controlsBlock}
               </div>
             </div>
           )}
@@ -391,7 +458,7 @@ export default function CardStudio() {
                 <div className="size-6 animate-spin rounded-full border-2 border-line border-t-accent" />
               </div>
             ) : (
-              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} />
+              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} xKey={config.xKey} yKeys={config.yKeys} />
             )}
           </div>
           {rows.length > 0 && chartType !== 'table' && (

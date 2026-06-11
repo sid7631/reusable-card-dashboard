@@ -221,7 +221,7 @@ function seedStarterContent(db) {
       name: 'Industry Spend',
       description: 'Charge volume by industry, largest first.',
       chart_type: 'bar',
-      config: JSON.stringify({ dimension: 'industry', metric: 'amount', agg: 'SUM' }),
+      config: JSON.stringify({ dimension: 'industry', metric: 'amount', agg: 'SUM', controls: { segment: true, period: true } }),
       sql_text: builderSql({ dimensionExpr: 'industry' }),
       created_via: 'builder',
     },

@@ -12,6 +12,11 @@ export interface CardConfig {
   agg?: 'SUM' | 'AVG' | 'COUNT';
   limit?: number;
   filters?: CardFilter[];
+  /** Explicit axis mapping (set in SQL mode); falls back to inference when absent. */
+  xKey?: string;
+  yKeys?: string[];
+  /** Interactive filter controls rendered on the card itself. */
+  controls?: { segment?: boolean; period?: boolean };
 }
 
 export interface Card {

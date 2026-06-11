@@ -43,6 +43,12 @@ Reseed demo data anytime with `npm run seed` (deterministic PRNG — same data e
   Export CSV / View SQL / Share (mock) actions.
 - **KPI YoY** — KPI cards automatically compare the selected window against the same window one
   year earlier and render the delta.
+- **Axis mapping** — the Builder exposes X-axis (category) / Y-axis (value) selectors; in SQL
+  mode you can explicitly map which result column is the X axis and which numeric columns plot
+  as Y series (stored as `xKey`/`yKeys` in the card config, inference is the fallback).
+- **On-card controls** — any card can opt into its own segment toggle and/or reporting-period
+  dropdown (Card Studio → "On-card controls"). These override the dashboard-level filters for
+  that widget only, and reset when the dashboard filters change.
 
 ## API surface
 

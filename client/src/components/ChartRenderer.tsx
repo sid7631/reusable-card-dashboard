@@ -9,11 +9,19 @@ interface Props {
   chartType: ChartType;
   data: CardData;
   compact?: boolean;
+  /** Explicit axis mapping — overrides inference when the keys exist in the result. */
+  xKey?: string;
+  yKeys?: string[];
 }
 
-function inferKeys(rows: Row[]): { labelKey: string; seriesKeys: string[] } {
+function inferKeys(rows: Row[], xKey?: string, yKeys?: string[]): { labelKey: string; seriesKeys: string[] } {
   if (!rows.length) return { labelKey: 'label', seriesKeys: [] };
   const keys = Object.keys(rows[0]);
+  if (xKey && keys.includes(xKey)) {
+    const explicit = (yKeys ?? []).filter((k) => keys.includes(k) && typeof rows[0][k] === 'number');
+    const series = explicit.length ? explicit : keys.filter((k) => k !== xKey && typeof rows[0][k] === 'number');
+    if (series.length) return { labelKey: xKey, seriesKeys: series };
+  }
   const labelKey = keys.find((k) => typeof rows[0][k] === 'string') ?? keys[0];
   const seriesKeys = keys.filter((k) => k !== labelKey && typeof rows[0][k] === 'number');
   return { labelKey, seriesKeys };
@@ -82,7 +90,7 @@ function DataTable({ rows }: { rows: Row[] }) {
   );
 }
 
-export default function ChartRenderer({ chartType, data, compact = false }: Props) {
+export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys }: Props) {
   const rows = data.rows;
   if (chartType === 'kpi') return <Kpi data={data} />;
   if (!rows.length) {
@@ -90,7 +98,7 @@ export default function ChartRenderer({ chartType, data, compact = false }: Prop
   }
   if (chartType === 'table') return <DataTable rows={rows} />;
 
-  const { labelKey, seriesKeys } = inferKeys(rows);
+  const { labelKey, seriesKeys } = inferKeys(rows, xKey, yKeys);
   if (!seriesKeys.length) return <DataTable rows={rows} />;
   const multi = seriesKeys.length > 1;
 

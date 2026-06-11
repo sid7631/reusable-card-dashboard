@@ -25,20 +25,37 @@ function DashboardCard({ card, segment, period, editMode, onRemove }: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
+  // Card-level overrides (null = follow the dashboard); reset when dashboard filters change
+  const [segOverride, setSegOverride] = useState<string | null>(null);
+  const [perOverride, setPerOverride] = useState<Period | null>(null);
+  useEffect(() => { setSegOverride(null); }, [segment]);
+  useEffect(() => { setPerOverride(null); }, [period]);
+
+  const effSegment = segOverride ?? segment;
+  const effPeriod = perOverride ?? period;
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setError(undefined);
-    api.cardData(card.id, { segment, from: period.from, to: period.to })
+    api.cardData(card.id, { segment: effSegment, from: effPeriod.from, to: effPeriod.to })
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [card.id, segment, period]);
+  }, [card.id, effSegment, effPeriod]);
+
+  const cardControls = card.config.controls;
+  const controls = (cardControls?.segment || cardControls?.period) ? (
+    <>
+      {cardControls?.segment ? <SegmentToggles compact value={effSegment} onChange={setSegOverride} /> : <span />}
+      {cardControls?.period && <PeriodSelect compact value={effPeriod} onChange={setPerOverride} />}
+    </>
+  ) : undefined;
 
   return (
-    <CardFrame card={card} rows={data.rows} editMode={editMode} onRemove={onRemove} loading={loading} error={error}>
-      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} />
+    <CardFrame card={card} rows={data.rows} controls={controls} editMode={editMode} onRemove={onRemove} loading={loading} error={error}>
+      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} />
     </CardFrame>
   );
 }

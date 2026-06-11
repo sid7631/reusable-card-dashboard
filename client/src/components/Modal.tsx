@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Props {
   title: string;
@@ -15,8 +16,10 @@ export default function Modal({ title, subtitle, onClose, children, wide = false
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-accent-deep/40 p-4 backdrop-blur-[2px]" onMouseDown={onClose}>
+  // Portaled to <body>: cards live inside transformed react-grid-layout items,
+  // which would otherwise clip and reposition this fixed overlay.
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-accent-deep/40 p-4 backdrop-blur-[2px]" onMouseDown={onClose}>
       <div
         className={`rise-in w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl border border-line bg-white shadow-2xl`}
         onMouseDown={(e) => e.stopPropagation()}
@@ -34,6 +37,7 @@ export default function Modal({ title, subtitle, onClose, children, wide = false
         </div>
         <div className="px-6 py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

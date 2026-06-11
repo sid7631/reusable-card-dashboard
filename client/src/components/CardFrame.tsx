@@ -2,12 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Card, Row } from '../lib/types';
 import { downloadCsv } from '../lib/format';
 import { previewSql } from '../lib/builder';
+import { useRaiseGridItem } from '../lib/useRaiseGridItem';
 import Modal from './Modal';
 
 interface Props {
   card: Card;
   rows: Row[];
   children: ReactNode;
+  /** Optional interactive filter controls rendered between header and chart. */
+  controls?: ReactNode;
   editMode?: boolean;
   onRemove?: () => void;
   loading?: boolean;
@@ -20,12 +23,13 @@ const VIA_BADGE: Record<string, string> = {
   copilot: 'Copilot',
 };
 
-export default function CardFrame({ card, rows, children, editMode = false, onRemove, loading, error }: Props) {
+export default function CardFrame({ card, rows, children, controls, editMode = false, onRemove, loading, error }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modal, setModal] = useState<'sql' | 'share' | null>(null);
   const [shareSent, setShareSent] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
+  useRaiseGridItem(menuOpen, menuRef);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -38,7 +42,7 @@ export default function CardFrame({ card, rows, children, editMode = false, onRe
   const action = (fn: () => void) => () => { setMenuOpen(false); fn(); };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-[0_1px_3px_rgba(10,28,63,0.06)] transition hover:shadow-[0_4px_16px_rgba(10,28,63,0.08)]">
+    <div className="flex h-full flex-col rounded-2xl border border-line bg-white shadow-[0_1px_3px_rgba(10,28,63,0.06)] transition hover:shadow-[0_4px_16px_rgba(10,28,63,0.08)]">
       <div className={`flex items-start justify-between gap-2 px-4 pt-3.5 pb-1 ${editMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''}`}>
         <div className="min-w-0">
           <h3 className="truncate font-display text-sm font-bold tracking-tight text-ink" title={card.name}>{card.name}</h3>
@@ -74,7 +78,9 @@ export default function CardFrame({ card, rows, children, editMode = false, onRe
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 px-3 pb-3">
+      {controls && <div className="flex flex-wrap items-center justify-between gap-1.5 px-4 pb-1.5 pt-1">{controls}</div>}
+
+      <div className="min-h-0 flex-1 overflow-hidden rounded-b-2xl px-3 pb-3">
         {error ? (
           <div className="flex h-full items-center justify-center px-4 text-center text-xs text-negative">{error}</div>
         ) : loading ? (

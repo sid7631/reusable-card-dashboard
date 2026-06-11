@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useRaiseGridItem } from '../lib/useRaiseGridItem';
 
 export interface Period {
   label: string;
@@ -20,11 +21,13 @@ export const PERIODS: Period[] = [
 interface Props {
   value: Period;
   onChange: (p: Period) => void;
+  compact?: boolean;
 }
 
-export default function PeriodSelect({ value, onChange }: Props) {
+export default function PeriodSelect({ value, onChange, compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  useRaiseGridItem(open, ref);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -38,24 +41,26 @@ export default function PeriodSelect({ value, onChange }: Props) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-full border border-line bg-white px-4 py-2 font-display text-sm font-semibold text-ink shadow-sm transition hover:border-accent"
+        className={`flex items-center rounded-full border border-line bg-white font-display font-semibold text-ink transition hover:border-accent ${
+          compact ? 'gap-1 px-2.5 py-0.5 text-[10px]' : 'gap-2 px-4 py-2 text-sm shadow-sm'
+        }`}
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg width={compact ? 11 : 14} height={compact ? 11 : 14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
           <rect x="2" y="3" width="12" height="11" rx="2" />
           <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" />
         </svg>
         {value.label}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" className={`transition ${open ? 'rotate-180' : ''}`}>
+        <svg width={compact ? 8 : 10} height={compact ? 8 : 10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" className={`transition ${open ? 'rotate-180' : ''}`}>
           <path d="M2 3.5l3 3 3-3" />
         </svg>
       </button>
       {open && (
-        <div className="rise-in absolute right-0 z-40 mt-2 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-xl">
+        <div className={`rise-in absolute right-0 z-40 mt-2 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-xl ${compact ? 'w-36' : 'w-44'}`}>
           {PERIODS.map((p) => (
             <button
               key={p.label}
               onClick={() => { onChange(p); setOpen(false); }}
-              className={`block w-full px-4 py-2 text-left text-sm transition hover:bg-accent-soft ${
+              className={`block w-full px-4 text-left transition hover:bg-accent-soft ${compact ? 'py-1.5 text-xs' : 'py-2 text-sm'} ${
                 p.label === value.label ? 'font-semibold text-accent' : 'text-ink-soft'
               }`}
             >

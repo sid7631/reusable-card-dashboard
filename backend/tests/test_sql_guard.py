@@ -1,6 +1,11 @@
 import pytest
 
-from app.execution.sql import Filters, SqlValidationError, bind_filters, validate_sql
+from app.execution.sql import SqlValidationError, bind_filters, validate_sql
+from app.governance.specs import DataSourceSpec
+from app.seed.__main__ import DEMO_SOURCE
+from app.semantic.filters import FilterError, Filters
+
+DEMO = DataSourceSpec.model_validate(DEMO_SOURCE)
 
 
 @pytest.mark.parametrize("sql", [
@@ -30,15 +35,25 @@ def test_rejects_writes_multiple_statements_and_placeholders(sql):
 
 def test_filters_are_bound_parameters_not_interpolated():
     hostile = "GCS' OR '1'='1"
-    sql, params = bind_filters("SELECT 1 FROM transactions WHERE 1=1 {{filters}}",
-                               Filters.parse(hostile, "SBS,MM", "2026-01-01", "2026-03-31"))
+    sql, params, meta = bind_filters("SELECT 1 FROM transactions WHERE 1=1 {{filters}}",
+                                     Filters.parse(hostile, "SBS,MM", "2026-01-01", "2026-03-31"), DEMO)
     assert hostile not in sql
-    assert sql.endswith("AND segment = $1 AND sub_segment = ANY($2::text[]) AND txn_date >= $3 AND txn_date <= $4")
-    assert params[0] == hostile and params[1] == ["SBS", "MM"]
+    assert sql.endswith('AND CAST("segment" AS TEXT) = ANY($1::text[]) AND CAST("sub_segment" AS TEXT) = ANY($2::text[]) '
+                        'AND "txn_date" >= $3 AND "txn_date" <= $4')
+    assert params[0] == [hostile] and params[1] == ["SBS", "MM"]
+    assert meta == {"applied": ["segment", "sub_segment", "period"], "ignored": []}
+
+
+def test_filters_the_source_cannot_bind_are_reported():
+    _, _, meta = bind_filters("SELECT 1 FROM transactions WHERE 1=1 {{filters}}",
+                              Filters.parse(filters_json='{"region": ["EMEA"]}'), DEMO)
+    assert meta == {"applied": [], "ignored": ["region"]}
+    _, params, meta = bind_filters("SELECT 1 FROM transactions", Filters.parse("GCS"), DEMO)
+    assert params == [] and meta["ignored"] == ["segment"]
 
 
 def test_invalid_date_rejected():
-    with pytest.raises(SqlValidationError):
+    with pytest.raises(FilterError):
         Filters.parse(date_from="2026-02-30")
 
 

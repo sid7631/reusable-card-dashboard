@@ -1,6 +1,7 @@
 import type {
   AssetKind, Card, CardData, ChangeRequestDetail, ChangeRequestSummary, Dashboard, DashboardDetail, Dataset,
-  DataSource, DataSourceSpec, DirectoryEntry, GlobalFilters, RebasePreview, SourceTestResult, UploadResult, RequestStatus, Row, Scope, Share, VersionDetail, VersionDiff, VersionInfo,
+  AppliedFilters, CardQuery, DashboardFilterDef, DataSource, DataSourceSpec, DirectoryEntry, RebasePreview, SemanticQuery,
+  SourceTestResult, UploadResult, RequestStatus, Row, Scope, Share, VersionDetail, VersionDiff, VersionInfo,
 } from './types';
 import { getToken, signOut } from './auth';
 
@@ -35,10 +36,10 @@ function errorMessage(body: unknown): string | undefined {
   return undefined;
 }
 
-function filterParams(filters?: Partial<GlobalFilters>, extra?: Record<string, string | number | undefined>): string {
+function filterParams(filters?: Partial<AppliedFilters>, extra?: Record<string, string | number | undefined>): string {
   const params = new URLSearchParams();
-  if (filters?.segment && filters.segment !== 'ALL') params.set('segment', filters.segment);
-  if (filters?.subSegments?.length) params.set('sub_segments', filters.subSegments.join(','));
+  const dims = Object.fromEntries(Object.entries(filters?.dims ?? {}).filter(([, v]) => v.length));
+  if (Object.keys(dims).length) params.set('filters', JSON.stringify(dims));
   if (filters?.from) params.set('from', filters.from);
   if (filters?.to) params.set('to', filters.to);
   for (const [k, v] of Object.entries(extra ?? {})) if (v !== undefined) params.set(k, String(v));
@@ -62,7 +63,11 @@ export interface DataSourcePayload {
   change_note?: string;
 }
 
-export type CardPayload = Pick<Card, 'name' | 'description' | 'chart_type' | 'config' | 'sql_text' | 'created_via' | 'data_source_id'> & {
+export type CardPayload = Pick<Card, 'name' | 'description' | 'chart_type' | 'config' | 'created_via' | 'data_source_id'> & {
+  /** Raw SQL cards. */
+  sql_text?: string;
+  /** Semantic cards (builder / copilot). */
+  query?: Exclude<CardQuery, { mode: 'sql' }>;
   change_note?: string;
 };
 
@@ -75,7 +80,7 @@ export const api = {
   cards: (scope?: Scope | 'shared') => request<Card[]>(`/api/cards${scope ? `?scope=${scope}` : ''}`),
   card: (id: number | string) => request<Card>(`/api/cards/${id}`),
   /** Pass the dashboard + pinned version when rendering a dashboard item. */
-  cardData: (id: number, filters?: Partial<GlobalFilters>, opts?: { versionId?: number; dashboardId?: number }) =>
+  cardData: (id: number, filters?: Partial<AppliedFilters>, opts?: { versionId?: number; dashboardId?: number }) =>
     request<CardData>(`/api/cards/${id}/data${filterParams(filters, { version_id: opts?.versionId, dashboard_id: opts?.dashboardId })}`),
   createCard: (payload: CardPayload) => request<Card>('/api/cards', { method: 'POST', body: JSON.stringify(payload) }),
   updateCard: (id: number | string, payload: CardPayload) => request<Card>(`/api/cards/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -102,6 +107,27 @@ export const api = {
   unshare: (kind: AssetKind, id: number, userId: number) =>
     request<void>(`/api/${kind}/${id}/shares/${userId}`, { method: 'DELETE' }),
   users: (q = '') => request<DirectoryEntry[]>(`/api/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+
+  // Filters
+  dashboardFilterOptions: (id: number, filterId: string, selections: Record<string, string[]>) =>
+    request<{ values: string[] }>(`/api/dashboards/${id}/filter-options/${filterId}?selections=${encodeURIComponent(JSON.stringify(selections))}`),
+  dashboardFilterable: (id: number) =>
+    request<{ dimensions: { name: string; label: string; sources: number[] }[] }>(`/api/dashboards/${id}/filterable`),
+  saveDashboardFilters: (id: number, filters: DashboardFilterDef[]) =>
+    request<DashboardDetail>(`/api/dashboards/${id}/filters`, { method: 'PUT', body: JSON.stringify({ filters }) }),
+  cardFilterOptions: (cardId: number, dimension: string, narrowing: Record<string, string[]>, opts?: { versionId?: number; dashboardId?: number }) =>
+    request<{ values: string[] }>(`/api/cards/${cardId}/filter-options${filterParams({ dims: narrowing }, {
+      dimension, version_id: opts?.versionId, dashboard_id: opts?.dashboardId })}`),
+
+  // Semantic layer
+  /** SQL for display/editing: static filters inlined, `{{filters}}` where dashboard filters bind. */
+  semanticCompile: (dataSourceId: number, query: SemanticQuery) =>
+    request<{ sql: string }>('/api/semantic/compile', { method: 'POST', body: JSON.stringify({ data_source_id: dataSourceId, query, editable: true }) }),
+  semanticQuery: (dataSourceId: number, query: SemanticQuery, filters?: Partial<AppliedFilters>) =>
+    request<{ rows: Row[]; meta: CardData['meta']; ms: number }>('/api/semantic/query', {
+      method: 'POST',
+      body: JSON.stringify({ data_source_id: dataSourceId, query, filters: filters?.dims ?? {}, date_from: filters?.from, date_to: filters?.to }),
+    }),
 
   // Data sources
   dataSources: (scope?: Scope | 'shared') => request<DataSource[]>(`/api/data-sources${scope ? `?scope=${scope}` : ''}`),
@@ -138,6 +164,6 @@ export const api = {
   decideChangeRequest: (id: number, action: 'approve' | 'reject' | 'withdraw' | 'update', comment = '') =>
     request<ChangeRequestDetail>(`/api/change-requests/${id}/${action}`, { method: 'POST', body: JSON.stringify({ comment }) })
       .then(notifyRequestsChanged),
-  previewRequestItem: (id: number, itemId: number, filters?: Partial<GlobalFilters>) =>
+  previewRequestItem: (id: number, itemId: number, filters?: Partial<AppliedFilters>) =>
     request<CardData & { chart_type: Card['chart_type']; config: Card['config'] }>(`/api/change-requests/${id}/items/${itemId}/data${filterParams(filters)}`),
 };

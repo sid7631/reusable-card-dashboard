@@ -1,56 +1,29 @@
-import type { CardConfig, ChartType } from './types';
+import type { CardConfig, ChartType, MeasureRef, SemanticQuery } from './types';
 
 /**
  * Generates the SQL stored with a card. The `{{filters}}` token is replaced
  * server-side with dashboard-level segment/period conditions at query time.
  */
-export interface SqlTarget {
-  table: string;
-  dialect: 'postgres' | 'duckdb';
-  /** Time dimension column (time-series axis), from the semantic model. */
-  timeColumn: string | null;
-  /** Whether the table has the columns the current dashboard filters bind to (segment, txn_date). */
-  dashboardFilters: boolean;
-}
+/**
+ * Builder state → semantic query (measures × dimensions in business terms). The server compiles it
+ * for the source's dialect and binds dashboard filters through the source's semantic model.
+ */
+export function toSemanticQuery(chartType: ChartType, cfg: CardConfig, dataset: string, timeDimension: string | null): SemanticQuery {
+  const measure: MeasureRef = cfg.measure
+    ? { name: cfg.measure }
+    : (cfg.agg ?? 'SUM') === 'COUNT' ? { agg: 'COUNT' } : { agg: cfg.agg ?? 'SUM', column: cfg.metric ?? '' };
+  const filters = (cfg.filters ?? []).filter((f) => f.field && f.value).map((f) => ({ dimension: f.field, values: [f.value] }));
+  if (chartType === 'kpi') return { mode: 'semantic', dataset, measures: [measure], dimensions: [], filters };
 
-export const DEMO_TARGET: SqlTarget = { table: 'transactions', dialect: 'postgres', timeColumn: 'txn_date', dashboardFilters: true };
-
-const ident = (name: string) => (/^[a-z_][a-z0-9_]*$/.test(name) ? name : `"${name.replaceAll('"', '""')}"`);
-
-export function buildSql(chartType: ChartType, cfg: CardConfig, target: SqlTarget = DEMO_TARGET): string {
-  const agg = cfg.agg ?? 'SUM';
-  const metric = cfg.metric ?? 'amount';
-  const aggExpr = agg === 'COUNT' ? 'COUNT(*)' : `${agg}(${ident(metric)})`;
-  const table = ident(target.table);
-  const filtersToken = target.dashboardFilters ? ' {{filters}}' : '';
-
-  const where = (cfg.filters ?? [])
-    .filter((f) => f.field && f.value)
-    .map((f) => `AND ${ident(f.field)} = '${f.value.replaceAll("'", "''")}'`)
-    .join(' ');
-  const whereSql = where ? ` ${where}` : '';
-
-  if (chartType === 'kpi') {
-    return `SELECT ${aggExpr} AS value\nFROM ${table}\nWHERE 1=1${whereSql}${filtersToken}`;
-  }
-
-  const dim = cfg.dimension ?? 'industry';
-  const isTime = dim === target.timeColumn;
-  let dimExpr = ident(dim);
-  if (isTime && cfg.timeGrain === 'month') {
-    dimExpr = target.dialect === 'postgres' ? `to_char(${ident(dim)}, 'YYYY-MM')` : `strftime(${ident(dim)}, '%Y-%m')`;
-  }
-  if (dim === 'vintage' && target.table === 'transactions') dimExpr = `'Vintage ' || vintage`;
-
-  const orderBy = isTime ? 'label ASC' : 'value DESC';
-  const limit = cfg.limit ? `\nLIMIT ${cfg.limit}` : '';
-
-  // Bar lists can carry a secondary category column (industry → sub-industry)
-  const sub = chartType === 'barlist' && cfg.dimension2 && cfg.dimension2 !== dim ? cfg.dimension2 : undefined;
-  const selectSub = sub ? `, ${ident(sub)} AS sublabel` : '';
-  const groupBy = sub ? 'label, sublabel' : 'label';
-
-  return `SELECT ${dimExpr} AS label${selectSub}, ${aggExpr} AS value\nFROM ${table}\nWHERE 1=1${whereSql}${filtersToken}\nGROUP BY ${groupBy}\nORDER BY ${orderBy}${limit}`;
+  const dim = cfg.dimension ?? '';
+  const isTime = dim === timeDimension;
+  const dimensions: SemanticQuery['dimensions'] = [{ name: dim, ...(isTime ? { grain: cfg.timeGrain ?? 'day' } : {}) }];
+  if (chartType === 'barlist' && cfg.dimension2 && cfg.dimension2 !== dim) dimensions.push({ name: cfg.dimension2 });
+  return {
+    mode: 'semantic', dataset, measures: [measure], dimensions, filters,
+    order: isTime ? 'label_asc' : 'value_desc',
+    ...(cfg.limit ? { limit: cfg.limit } : {}),
+  };
 }
 
 /** Strip the filters token for ad-hoc preview runs (server also handles it). */

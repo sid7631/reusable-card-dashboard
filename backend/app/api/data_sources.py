@@ -17,7 +17,7 @@ from app.core import secrets
 from app.core.auth import CurrentUser, Session
 from app.core.config import get_settings
 from app.execution.cards import run_sql
-from app.execution.sql import Filters
+from app.semantic.filters import Filters
 from app.governance.requests import governance_info
 from app.governance.service import archive_asset, create_asset, get_asset, parse_spec, save_version
 from app.governance.specs import DataSourceSpec
@@ -266,6 +266,6 @@ async def preview_query(body: QueryIn, user: CurrentUser, session: Session) -> d
     spec = DataSourceSpec.model_validate(version.spec)
     f = body.filters
     t0 = time.perf_counter()
-    rows = await run_sql(spec, body.sql, Filters.parse(f.get("segment"), f.get("sub_segments"), f.get("from"), f.get("to")),
-                         version.id)
+    rows = await run_sql(spec, body.sql, Filters.parse(f.get("segment"), f.get("sub_segments"), f.get("from"), f.get("to"),
+                                                       f.get("filters")), version.id)
     return {"rows": rows, "ms": round((time.perf_counter() - t0) * 1000)}

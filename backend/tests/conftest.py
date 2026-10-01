@@ -51,6 +51,8 @@ async def database():
     from app.seed.__main__ import seed_assets, seed_warehouse
     await seed_warehouse(reset=False)
     await seed_assets(reset=False)
+    from app.seed.__main__ import upgrade_demo
+    await upgrade_demo()
     auth.jwks = StaticJwks()
     yield
     await engine.dispose()
@@ -104,11 +106,14 @@ def admin(client):
 @pytest.fixture
 async def seeded(user):
     """Ids of the seeded global data source, cards and dashboard."""
-    sources = (await user.get("/api/data-sources")).json()
+    # Looked up by name: other tests publish their own global assets
+    sources = (await user.get("/api/data-sources?scope=global")).json()
     dashboards = (await user.get("/api/dashboards?scope=global")).json()
     cards = (await user.get("/api/cards?scope=global")).json()
-    return {"source_id": sources[0]["id"], "dashboard_id": dashboards[0]["id"],
-            "cards": {c["name"]: c for c in cards}}
+    return {"source_id": next(s["id"] for s in sources if s["name"] == "Demo Warehouse"),
+            "dashboard_id": next(d["id"] for d in dashboards if d["name"] == "Enterprise Spend Overview"),
+            "cards": {c["name"]: c for c in cards if c["data_source_id"] == next(
+                s["id"] for s in sources if s["name"] == "Demo Warehouse")}}
 
 
 async def run_sql(sql: str):

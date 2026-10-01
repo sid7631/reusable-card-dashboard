@@ -15,7 +15,7 @@ from sqlalchemy import delete, select, text
 from app.core.config import get_settings
 from app.core.db import SessionLocal, engine
 from app.governance.service import create_asset
-from app.models import Asset, User
+from app.models import Asset, AssetVersion, User
 
 # ---------------------------------------------------------------- warehouse data
 SEGMENTS = {"USCS": ["Consumer", "SBS"], "GCS": ["SBS", "MM", "G&L"], "ICS": ["Consumer", "SBS", "Corporate"]}
@@ -243,7 +243,8 @@ async def seed_assets(reset: bool) -> None:
             session, system, "dashboard", name="Enterprise Spend Overview",
             description="Performance summary — spend by segment, industry, product, vintage and geography.",
             scope="global",
-            spec={"items": [{"card": card_refs[n], "x": x, "y": y, "w": w, "h": h} for n, x, y, w, h in LAYOUT]})
+            spec={"items": [{"card": card_refs[n], "x": x, "y": y, "w": w, "h": h} for n, x, y, w, h in LAYOUT],
+                  "filters": DEMO_FILTERS})
         await session.commit()
         print(f"Assets: seeded 1 data source, {len(CARDS)} cards, 1 dashboard (global v1).")
 
@@ -265,10 +266,66 @@ async def sync_directory() -> None:
         await session.commit()
 
 
+DEMO_FILTERS = [
+    {"id": "segment", "kind": "select", "dimension": "segment", "label": "Segment"},
+    {"id": "sub_segment", "kind": "multi", "dimension": "sub_segment", "label": "Sub-segment", "parent": "segment"},
+    {"id": "period", "kind": "period", "label": "Period", "default": ["ytd"]},
+]
+
+
+async def upgrade_demo() -> None:
+    """Bring databases seeded before phase 4 up to date through normal versioning (never edits history):
+    demo source v2 with the full semantic model, global cards re-pinned to it, and filters on the
+    Enterprise Spend Overview dashboard."""
+    from app.governance.service import save_version
+    from app.governance.specs import DataSourceSpec
+
+    async with SessionLocal() as session:
+        system = await session.scalar(select(User).where(User.sub == "system"))
+        source = await session.scalar(select(Asset).where(Asset.kind == "data_source", Asset.scope == "global",
+                                                          Asset.name == "Demo Warehouse"))
+        if system is None or source is None:
+            return
+        head = await session.get(AssetVersion, source.head_version_id)
+        changed = False
+        if DataSourceSpec.model_validate(head.spec).model.datasets[0].time_dimension is None:
+            await save_version(session, system, source, name=head.name, description=head.description,
+                               spec={**DEMO_SOURCE}, change_note="Semantic model: labels, measures, time dimension")
+            changed = True
+
+        cards = await session.scalars(select(Asset).where(Asset.kind == "card", Asset.scope == "global",
+                                                          Asset.archived_at.is_(None)))
+        for card in cards:
+            v = await session.get(AssetVersion, card.head_version_id)
+            ref = v.spec["data_source"]
+            if ref["asset_id"] == source.id and ref["version_id"] != source.head_version_id:
+                await save_version(session, system, card, name=v.name, description=v.description,
+                                   spec={**v.spec, "data_source": {"asset_id": source.id, "version_id": source.head_version_id}},
+                                   change_note="Use Demo Warehouse semantic model")
+                changed = True
+
+        dash = await session.scalar(select(Asset).where(Asset.kind == "dashboard", Asset.scope == "global",
+                                                        Asset.name == "Enterprise Spend Overview"))
+        if dash is not None:
+            dv = await session.get(AssetVersion, dash.head_version_id)
+            heads = {a.id: a.head_version_id for a in await session.scalars(
+                select(Asset).where(Asset.id.in_([i["card"]["asset_id"] for i in dv.spec["items"]])))}
+            items = [{**i, "card": {**i["card"], "version_id": heads.get(i["card"]["asset_id"], i["card"]["version_id"])}}
+                     for i in dv.spec["items"]]
+            if not dv.spec.get("filters") or items != dv.spec["items"]:
+                await save_version(session, system, dash, name=dv.name, description=dv.description,
+                                   spec={**dv.spec, "items": items, "filters": dv.spec.get("filters") or DEMO_FILTERS},
+                                   change_note="Hierarchical filters; cards on the semantic model")
+                changed = True
+        await session.commit()
+        print("Demo content: upgraded for the semantic layer." if changed else "Demo content: up to date.")
+
+
 async def main(reset: bool) -> None:
     await seed_warehouse(reset)
     await seed_assets(reset)
     await sync_directory()
+    await upgrade_demo()
     await engine.dispose()
 
 

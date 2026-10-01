@@ -8,7 +8,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.auth import CurrentUser, Session
 from app.execution.cards import run_card
-from app.execution.sql import Filters
+from app.semantic.filters import Filters
 from app.governance import requests as cr
 from app.governance.service import get_asset
 from app.governance.specs import CardSpec, DataSourceSpec
@@ -162,7 +162,7 @@ async def withdraw(request_id: int, user: CurrentUser, session: Session) -> dict
 async def preview_item(request_id: int, item_id: int, user: CurrentUser, session: Session,
                        segment: str | None = None, sub_segments: str | None = None,
                        date_from: str | None = Query(None, alias="from"),
-                       date_to: str | None = Query(None, alias="to")) -> dict[str, Any]:
+                       date_to: str | None = Query(None, alias="to"), filters: str | None = None) -> dict[str, Any]:
     """Render a proposed card version for review (the reviewer may not otherwise see the private card)."""
     request = await _load(session, user, request_id)
     item = await session.get(ChangeRequestItem, item_id)
@@ -174,4 +174,4 @@ async def preview_item(request_id: int, item_id: int, user: CurrentUser, session
     card = CardSpec.model_validate(version.spec)
     source = DataSourceSpec.model_validate((await session.get(AssetVersion, card.data_source.version_id)).spec)
     return {"chart_type": card.chart_type, "config": card.config,
-            **await run_card(card, source, Filters.parse(segment, sub_segments, date_from, date_to))}
+            **await run_card(card, source, Filters.parse(segment, sub_segments, date_from, date_to, filters))}

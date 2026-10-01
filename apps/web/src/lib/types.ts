@@ -6,6 +6,8 @@ export interface CardFilter {
 }
 
 export interface CardConfig {
+  /** Model measure name (semantic builder). Absent = ad-hoc `agg` of `metric`. */
+  measure?: string;
   dimension?: string;
   /** Optional secondary category for bar lists (e.g. industry → sub-industry). */
   dimension2?: string;
@@ -23,6 +25,9 @@ export interface CardConfig {
   scheme?: string;
   /** Interactive filter controls rendered on the card itself. */
   controls?: {
+    /** Dimensions viewers can re-filter on the card itself (override the dashboard). */
+    filters?: string[];
+    /** Legacy (pre-semantic) segment toggle — read as filters ['segment', 'sub_segment']. */
     segment?: boolean;
     /** Which segment chips the toggle offers, e.g. ['ALL','GCS','ICS']. Default: all. */
     segmentOptions?: string[];
@@ -132,8 +137,24 @@ export interface ChangeRequestDetail extends ChangeRequestSummary {
   can_update: boolean;
 }
 
+export type MeasureRef = { name: string; label?: string } | { agg: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX' | 'COUNT_DISTINCT'; column?: string; label?: string };
+
+/** Measures × dimensions in business terms — compiled server-side for the source's dialect. */
+export interface SemanticQuery {
+  mode: 'semantic';
+  dataset: string;
+  measures: MeasureRef[];
+  dimensions: { name: string; grain?: 'day' | 'week' | 'month' | 'quarter' | 'year' }[];
+  filters: { dimension: string; values: string[] }[];
+  order?: 'value_desc' | 'value_asc' | 'label_asc' | 'label_desc';
+  limit?: number;
+}
+
+export type CardQuery = { mode: 'sql'; sql: string } | SemanticQuery;
+
 export interface Card extends AssetMeta {
   chart_type: ChartType;
+  query: CardQuery;
   dataset: string;
   data_source_id: number;
   data_source_version_id: number;
@@ -153,14 +174,31 @@ export interface DashboardItem extends Card {
   card_version_id?: number;
   latest_version_id?: number;
   update_available?: boolean;
+  /** What the card's source can be filtered by. */
+  filterable?: { dimensions: string[]; time: boolean };
   x: number;
   y: number;
   w: number;
   h: number;
 }
 
+/** A dashboard filter control bound to a semantic dimension. */
+export interface DashboardFilterDef {
+  id: string;
+  kind: 'select' | 'multi' | 'period';
+  dimension: string;
+  label: string;
+  /** Cascading: options narrow to the parent's selection. */
+  parent: string | null;
+  source_id: number | null;
+  default: string[];
+  /** Cards may not override a locked filter. */
+  locked: boolean;
+}
+
 export interface DashboardDetail extends Dashboard {
   items: DashboardItem[];
+  filters: DashboardFilterDef[];
 }
 
 export interface VersionInfo {
@@ -299,13 +337,15 @@ export interface CardData {
     deltaPct?: number;
     /** Same query run over the prior-year window — powers per-row YoY deltas. */
     prevRows?: Row[];
+    /** Filters the card's source could bind / could not bind (dimension names, or "period"). */
+    applied?: string[];
+    ignored?: string[];
   };
 }
 
-export interface GlobalFilters {
-  segment: string; // 'ALL' | 'USCS' | 'GCS' | 'ICS'
-  subSegments?: string[]; // multi-select within GCS / ICS
+/** Filters applied to a card request: dimension values (business names) plus a time window. */
+export interface AppliedFilters {
+  dims: Record<string, string[]>;
   from?: string;
   to?: string;
-  periodLabel: string;
 }

@@ -15,8 +15,8 @@ interface Props {
   onRemove?: () => void;
   loading?: boolean;
   error?: string;
-  /** Small attention chip in the header, e.g. "update available". */
-  notice?: string;
+  /** Small attention chips in the header, e.g. "update available", "partly filtered". */
+  notices?: { label: string; title: string }[];
 }
 
 const VIA_BADGE: Record<string, string> = {
@@ -25,7 +25,7 @@ const VIA_BADGE: Record<string, string> = {
   copilot: 'Copilot',
 };
 
-export default function CardFrame({ card, rows, children, controls, context = DEFAULT_CONTEXT, editMode = false, onRemove, loading, error, notice }: Props) {
+export default function CardFrame({ card, rows, children, controls, context = DEFAULT_CONTEXT, editMode = false, onRemove, loading, error, notices = [] }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modal, setModal] = useState<'export' | 'sql' | 'share' | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -49,11 +49,11 @@ export default function CardFrame({ card, rows, children, controls, context = DE
           <p className="truncate text-[11px] text-ink-faint" title={card.description}>{card.description || ' '}</p>
         </div>
         <div ref={menuRef} className="relative flex shrink-0 items-center gap-1">
-          {notice && (
-            <span title={notice} className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-              Update
+          {notices.map((n) => (
+            <span key={n.label} title={n.title} className="whitespace-nowrap rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+              {n.label}
             </span>
-          )}
+          ))}
           <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
             {VIA_BADGE[card.created_via] ?? card.created_via}
           </span>

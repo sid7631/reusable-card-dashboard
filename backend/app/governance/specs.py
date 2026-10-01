@@ -4,7 +4,7 @@ Specs reference other assets by (asset_id, version_id) so a version is a complet
 snapshot: a dashboard version pins card versions, a card version pins a data-source version.
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Union
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -158,7 +158,8 @@ class CardSpec(BaseModel):
 
     chart_type: ChartType
     data_source: AssetRef
-    query: SqlQuery
+    # Raw SQL, or a semantic query (measures × dimensions) compiled per dialect
+    query: Annotated[Union[SqlQuery, "SemanticQuery"], Field(discriminator="mode")]
     created_via: Literal["builder", "sql", "copilot"] = "builder"
     # Builder state + visual options (axis mapping, scheme, on-card controls); opaque to the server
     config: dict[str, Any] = Field(default_factory=dict)
@@ -175,12 +176,44 @@ class DashboardItem(BaseModel):
     h: int = Field(4, ge=1)
 
 
+class DashboardFilter(BaseModel):
+    """A dashboard filter control bound to a semantic dimension (architecture §7)."""
+    id: str = Field(pattern=r"^[a-z0-9_-]{1,40}$")
+    kind: Literal["select", "multi", "period"] = "select"
+    dimension: str = ""                  # ignored for kind=period (binds to each dataset's time dimension)
+    label: str = ""
+    parent: str | None = None            # cascading: options narrow to the parent's selection
+    source_id: int | None = None         # where options come from; default: first card source with the dimension
+    default: list[str] = Field(default_factory=list)   # period: [preset id]
+    locked: bool = False                 # cards may not override a locked filter
+
+
 class DashboardSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[DashboardItem] = Field(default_factory=list)
-    # Filter controls (hierarchy + override levels) arrive in phase 4
-    filters: list[dict[str, Any]] = Field(default_factory=list)
+    filters: list[DashboardFilter] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _valid_filters(self) -> "DashboardSpec":
+        ids = [f.id for f in self.filters]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Filter ids must be unique.")
+        for f in self.filters:
+            if f.parent is not None and (f.parent not in ids or f.parent == f.id):
+                raise ValueError(f"Filter “{f.id}” has an unknown parent.")
+            if f.kind != "period" and not f.dimension:
+                raise ValueError(f"Filter “{f.id}” needs a dimension.")
+        # parents must not form a cycle
+        parent = {f.id: f.parent for f in self.filters}
+        for f in self.filters:
+            seen, cur = set(), f.id
+            while cur is not None:
+                if cur in seen:
+                    raise ValueError("Filter parents form a cycle.")
+                seen.add(cur)
+                cur = parent.get(cur)
+        return self
 
 
 SPEC_MODELS: dict[str, type[BaseModel]] = {
@@ -196,3 +229,8 @@ def dependencies(kind: str, spec: BaseModel) -> list[AssetRef]:
     if isinstance(spec, DashboardSpec):
         return [item.card for item in spec.items]
     return []
+
+
+from app.semantic.query import SemanticQuery  # noqa: E402 — imports this module's SemanticDataset
+
+CardSpec.model_rebuild()

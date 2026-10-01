@@ -60,7 +60,8 @@ def parse_spec(kind: str, raw: dict[str, Any]) -> BaseModel:
     try:
         return SPEC_MODELS[kind].model_validate(raw)
     except ValidationError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors(include_url=False)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                            exc.errors(include_url=False, include_context=False, include_input=False)) from exc
 
 
 async def _check_dependencies(session: AsyncSession, user: User, asset: Asset, spec: BaseModel) -> list[AssetVersion]:

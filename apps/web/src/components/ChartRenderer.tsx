@@ -52,7 +52,8 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 
 function Kpi({ data }: { data: CardData }) {
   const rows = data.rows;
-  const value = Number(Object.values(rows[0] ?? {})[0] ?? 0);
+  const raw = Object.values(rows[0] ?? {})[0];
+  const value = Number(raw ?? 0);
   const { deltaPct, deltaAbs } = data.meta ?? {};
   const positive = (deltaPct ?? 0) >= 0;
   return (
@@ -63,7 +64,11 @@ function Kpi({ data }: { data: CardData }) {
           {positive ? '▲' : '▼'} {formatMoney(Math.abs(deltaAbs))} ({positive ? '+' : ''}{deltaPct.toFixed(0)}% YoY)
         </p>
       ) : (
-        <p className="mt-2 text-sm text-ink-faint">vs prior year — select a period</p>
+        <p className="mt-2 text-sm text-ink-faint">
+          {raw === null || raw === undefined ? 'No data for these filters'
+            : data.meta?.ignored?.includes('period') ? 'All time — period doesn’t apply to this source'
+              : data.meta?.applied?.includes('period') ? 'No prior-year data to compare' : 'vs prior year — select a period'}
+        </p>
       )}
     </div>
   );

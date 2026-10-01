@@ -39,7 +39,9 @@ def card_out(asset: Asset, version: AssetVersion, access: str | None, owner_name
         "data_source_id": spec["data_source"]["asset_id"],
         "data_source_version_id": spec["data_source"]["version_id"],
         "config": spec.get("config", {}),
-        "sql_text": spec["query"]["sql"],
+        "query": spec["query"],
+        # Raw SQL cards only; semantic cards compile per request (see /api/semantic/compile)
+        "sql_text": spec["query"].get("sql", ""),
         "created_via": spec.get("created_via", "builder"),
     }
 

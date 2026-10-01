@@ -81,6 +81,15 @@ Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo da
   a published source can't redirect it to another host; only admins may reference server settings (`env:`). DuckDB
   extracts are opened read-only with external access disabled. Non-admins can't target private network addresses
   unless `ALLOW_PRIVATE_NETWORK_SOURCES=true` (local dev).
+- **Semantic queries.** Builder cards are stored as measures × dimensions in business terms (model measures or
+  ad-hoc aggregates, time grains day → year, static filters, sort, limit) and compiled server-side to Postgres or
+  DuckDB SQL. Model measure expressions must be plain aggregates. The same `/api/semantic/*` endpoints are the shape
+  future LLM tools will call. Raw-SQL cards keep working with a `{{filters}}` token.
+- **Filters.** Dashboards define their filters: a dimension, single/multi select, a parent (options cascade from the
+  parent's selection), a lock, and a default — plus a period filter bound to each source's time dimension. Every card
+  binds filters through its own source's model; filters a source can't apply are reported and the card shows
+  "Partly filtered". Cards can expose their own filter dropdowns that override the dashboard for that card, except
+  where the dashboard filter is locked.
 - **Auth.** The SPA gets a signed token from `/auth/token` and sends it as a Bearer token; FastAPI verifies it
   against the JWKS and provisions the user on first request.
 - **Safe queries.** Card SQL is parsed with SQLGlot (exactly one read-only `SELECT`), dashboard filters are bound as
@@ -97,7 +106,7 @@ GET  /api/datasets                 builder metadata per visible data source
 POST /api/query                    studio preview {sql, data_source_id}
 GET  /api/cards?scope=global|private|shared      POST /api/cards
 GET  /api/cards/:id[?version_id]   PUT /api/cards/:id (new version)   DELETE (archive)
-GET  /api/cards/:id/data?dashboard_id&version_id&segment&sub_segments&from&to
+GET  /api/cards/:id/data?dashboard_id&version_id&filters={json}&from&to   → rows + applied/ignored filters
 GET  /api/dashboards               POST /api/dashboards
 GET  /api/dashboards/:id           PUT /api/dashboards/:id/items (new version)   DELETE (archive)
 GET  /api/users?q=                 directory, for sharing
@@ -108,6 +117,14 @@ POST /api/data-sources/test        {spec, credentials?, data_source_id?} → tab
 POST /api/files                    multipart upload (CSV / XLSX / JSON) → tables, suggested model
 
 POST /api/dashboards/:id/apply-updates           re-pin cards to their latest versions
+PUT  /api/dashboards/:id/filters                  filter definitions (new version)
+GET  /api/dashboards/:id/filter-options/:filter?selections=   cascading options
+GET  /api/dashboards/:id/filterable               dimensions across the dashboard's sources
+GET  /api/cards/:id/filter-options?dimension&filters          options for card-level controls
+
+GET  /api/semantic/catalog/:source_id             datasets, dimensions, measures (business names)
+POST /api/semantic/compile {data_source_id, query, editable?}
+POST /api/semantic/query   {data_source_id, query, filters, date_from, date_to}
 
 GET  /api/change-requests?status=          admin: queue · user: own      GET /api/change-requests/summary
 POST /api/change-requests {kind, asset_id, title, description}

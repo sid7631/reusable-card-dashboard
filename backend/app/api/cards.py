@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.listing import list_visible, owner_name
 from app.api.serializers import card_out
 from app.core.auth import CurrentUser, Session
-from app.execution.cards import run_card
-from app.execution.sql import Filters, validate_sql
+from app.execution.cards import compile_card, run_card
+from app.semantic.filters import Filters
+from app.semantic.options import dimension_values
+from app.semantic.query import CompileError, SemanticQuery
 from app.governance.requests import governance_info
 from app.governance.service import archive_asset, create_asset, get_asset, save_version
-from app.governance.specs import CardSpec, ChartType, DashboardSpec, DataSourceSpec
+from app.governance.specs import CardSpec, ChartType, DashboardSpec, DataSourceSpec, SqlQuery
 from app.models import AssetVersion, User
 
 router = APIRouter(prefix="/api/cards", tags=["cards"])
@@ -23,19 +25,32 @@ class CardIn(BaseModel):
     chart_type: ChartType
     data_source_id: int
     config: dict[str, Any] = {}
-    sql_text: str
+    # Raw SQL (with an optional {{filters}} token) — or a semantic `query` instead
+    sql_text: str = ""
+    query: dict[str, Any] | None = None
     created_via: Literal["builder", "sql", "copilot"] = "builder"
     change_note: str = ""
     scope: Literal["private", "global"] = "private"
 
 
 async def _card_spec(session: AsyncSession, user: User, body: CardIn) -> dict[str, Any]:
-    validate_sql(body.sql_text)
     source, _ = await get_asset(session, user, "data_source", body.data_source_id)
+    source_spec = DataSourceSpec.model_validate((await session.get(AssetVersion, source.head_version_id)).spec)
+    if body.query is not None:
+        try:
+            query: Any = SemanticQuery.model_validate(body.query)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    else:
+        query = SqlQuery(sql=body.sql_text)
+    try:
+        compile_card(query, source_spec, Filters())  # validates SQL / model references before saving
+    except CompileError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return {
         "chart_type": body.chart_type,
         "data_source": {"asset_id": source.id, "version_id": source.head_version_id},
-        "query": {"mode": "sql", "sql": body.sql_text},
+        "query": query.model_dump(mode="json", exclude_none=True),
         "created_via": body.created_via,
         "config": body.config,
     }
@@ -92,12 +107,27 @@ async def card_data(
     dashboard_id: int | None = Query(None, description="Render through a dashboard the user can view"),
     segment: str | None = None, sub_segments: str | None = None,
     date_from: str | None = Query(None, alias="from"), date_to: str | None = Query(None, alias="to"),
+    filters: str | None = Query(None, description='JSON {dimension: [values]}'),
 ) -> dict[str, Any]:
     version = await _authorised_card_version(session, user, card_id, version_id, dashboard_id)
     card = CardSpec.model_validate(version.spec)
     source_version = await session.get(AssetVersion, card.data_source.version_id)
     source = DataSourceSpec.model_validate(source_version.spec)
-    return await run_card(card, source, Filters.parse(segment, sub_segments, date_from, date_to))
+    return await run_card(card, source, Filters.parse(segment, sub_segments, date_from, date_to, filters))
+
+
+@router.get("/{card_id}/filter-options")
+async def card_filter_options(
+    card_id: int, dimension: str, user: CurrentUser, session: Session,
+    version_id: int | None = None, dashboard_id: int | None = None,
+    filters: str | None = Query(None, description="JSON {dimension: [values]} narrowing the options"),
+) -> dict[str, Any]:
+    """Values for a card-level filter control, from the card's own source."""
+    version = await _authorised_card_version(session, user, card_id, version_id, dashboard_id)
+    card = CardSpec.model_validate(version.spec)
+    source = DataSourceSpec.model_validate((await session.get(AssetVersion, card.data_source.version_id)).spec)
+    values = await dimension_values(source, card.data_source.version_id, dimension, Filters.parse(filters_json=filters))
+    return {"dimension": dimension, "values": values}
 
 
 async def _authorised_card_version(session: AsyncSession, user: User, card_id: int, version_id: int | None,

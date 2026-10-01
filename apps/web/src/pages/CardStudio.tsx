@@ -4,7 +4,7 @@ import Editor from '@monaco-editor/react';
 import { api } from '../lib/api';
 import type { Card, CardConfig, CardFilter, ChartType, Dataset, Row } from '../lib/types';
 import { SCHEMES } from '../lib/format';
-import { buildSql, copilotRespond, DEMO_TARGET, type SqlTarget } from '../lib/builder';
+import { copilotRespond, toSemanticQuery } from '../lib/builder';
 import ChartRenderer from '../components/ChartRenderer';
 import Modal from '../components/Modal';
 import VersionHistory from '../components/VersionHistory';
@@ -40,23 +40,23 @@ export default function CardStudio() {
   const [mode, setMode] = useState<Mode>('builder');
   const [chartType, setChartType] = useState<ChartType>('bar');
   const [config, setConfig] = useState<CardConfig>({ dimension: 'industry', metric: 'amount', agg: 'SUM', filters: [] });
-  const [sqlText, setSqlText] = useState(() => buildSql('bar', { dimension: 'industry', metric: 'amount', agg: 'SUM' }));
+  // Raw SQL in SQL mode; the compiled semantic query (read-only) in builder / copilot modes
+  const [sqlText, setSqlText] = useState('');
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [sourceId, setSourceId] = useState<number>();
   const dataset = datasets.find((d) => d.id === sourceId) ?? null;
 
-  // Builder vocabulary comes from the source's semantic model
+  // Builder vocabulary comes from the source's semantic model: dimensions and measures by name
   const primary = dataset?.model.datasets.find((d) => d.name === dataset.name) ?? dataset?.model.datasets[0];
-  const timeColumn = primary?.time_dimension ?? null;
-  const dimensions = primary?.dimensions.length
-    ? primary.dimensions.map((d) => ({ id: d.column, label: d.column === timeColumn ? `${d.label || d.name} (time series)` : d.label || d.name }))
-    : (dataset?.columns ?? []).map((c) => ({ id: c.name, label: c.name }));
+  const timeColumn = primary
+    ? primary.dimensions.find((d) => d.name === primary.time_dimension || d.column === primary.time_dimension)?.name ?? null
+    : null;
+  const dimensions = (primary?.dimensions ?? []).map((d) => ({
+    id: d.name, label: d.name === timeColumn ? `${d.label || d.name} (time series)` : d.label || d.name,
+  }));
+  const measures = (primary?.measures ?? []).map((m) => ({ id: m.name, label: m.label || m.name }));
   const numericColumns_ = (dataset?.columns ?? []).filter((c) => /int|numeric|decimal|double|real|float/i.test(c.type)).map((c) => c.name);
-  const columnNames = new Set((dataset?.columns ?? []).map((c) => c.name));
-  const target: SqlTarget = dataset
-    ? { table: dataset.name, dialect: dataset.dialect, timeColumn, dashboardFilters: columnNames.has('segment') && columnNames.has('txn_date') }
-    : DEMO_TARGET;
-  const targetKey = JSON.stringify(target);
+  const semanticKey = primary && dataset ? JSON.stringify({ source: dataset.id, query: toSemanticQuery(chartType, config, primary.name, timeColumn) }) : '';
 
   const [rows, setRows] = useState<Row[]>([]);
   const [queryMs, setQueryMs] = useState<number | null>(null);
@@ -96,29 +96,37 @@ export default function CardStudio() {
   // to its first dimension / numeric column (new cards, or switching source)
   const dimensionIds = dimensions.map((d) => d.id).join('|');
   const numericKey = numericColumns_.join('|');
+  const measureIds = measures.map((m) => m.id).join('|');
   useEffect(() => {
-    if (!dataset || mode !== 'builder') return;
+    if (!dataset || mode === 'sql') return;
     const dims = dimensionIds ? dimensionIds.split('|') : [];
     const nums = numericKey ? numericKey.split('|') : [];
+    const ms = measureIds ? measureIds.split('|') : [];
     setConfig((c) => {
       const dimOk = !c.dimension || dims.includes(c.dimension);
-      const metricOk = c.agg === 'COUNT' || (c.metric !== undefined && nums.includes(c.metric));
-      if (dimOk && metricOk) return c;
+      const measureOk = c.measure ? ms.includes(c.measure) : c.agg === 'COUNT' || (c.metric !== undefined && nums.includes(c.metric));
+      if (dimOk && measureOk) return c;
       return {
         ...c,
         ...(dimOk ? {} : { dimension: dims.find((d) => d !== timeColumn) ?? dims[0], dimension2: undefined, filters: [] }),
-        ...(metricOk ? {} : nums.length ? { metric: nums[0] } : { agg: 'COUNT' as const }),
+        ...(measureOk ? {} : ms.length ? { measure: ms[0] } : nums.length ? { measure: undefined, metric: nums[0] } : { measure: undefined, agg: 'COUNT' as const }),
       };
     });
-  }, [dataset, mode, dimensionIds, numericKey, timeColumn]);
+  }, [dataset, mode, dimensionIds, numericKey, measureIds, timeColumn]);
 
   // Load existing card when editing
   useEffect(() => {
     if (!id) return;
     api.card(id).then((c) => {
-      setMode(c.created_via);
+      // Older builder cards stored SQL; they open in the builder and save back as semantic queries
+      setMode(c.query.mode === 'sql' && c.created_via !== 'builder' ? 'sql' : c.created_via === 'sql' ? 'sql' : c.created_via);
       setChartType(c.chart_type);
-      setConfig({ filters: [], ...c.config });
+      const controls = c.config.controls;
+      setConfig({
+        filters: [], ...c.config,
+        // Legacy segment toggle → generic per-dimension controls
+        ...(controls?.segment && !controls.filters ? { controls: { ...controls, segment: undefined, filters: ['segment', 'sub_segment'] } } : {}),
+      });
       setSqlText(c.sql_text);
       setName(c.name);
       setDescription(c.description);
@@ -146,14 +154,30 @@ export default function CardStudio() {
     }
   }, [dataSourceId]);
 
-  // Builder mode: regenerate SQL + auto-run (debounced) when config changes
+  // Builder / copilot: compile the semantic query and run it (debounced) whenever it changes
   useEffect(() => {
-    if (mode !== 'builder') return;
-    const sql = buildSql(chartType, config, JSON.parse(targetKey) as SqlTarget);
-    setSqlText(sql);
-    const t = setTimeout(() => runPreview(sql), 350);
-    return () => clearTimeout(t);
-  }, [mode, chartType, config, runPreview, targetKey]);
+    if (mode === 'sql' || !semanticKey) return;
+    const { source, query } = JSON.parse(semanticKey);
+    let alive = true;
+    const t = setTimeout(async () => {
+      setRunning(true);
+      setQueryError(undefined);
+      try {
+        const [compiled, res] = await Promise.all([api.semanticCompile(source, query), api.semanticQuery(source, query)]);
+        if (!alive) return;
+        setSqlText(compiled.sql);
+        setRows(res.rows);
+        setQueryMs(res.ms);
+      } catch (e) {
+        if (!alive) return;
+        setQueryError((e as Error).message);
+        setRows([]);
+      } finally {
+        if (alive) setRunning(false);
+      }
+    }, 350);
+    return () => { alive = false; clearTimeout(t); };
+  }, [mode, semanticKey]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -179,11 +203,8 @@ export default function CardStudio() {
       setThinking(false);
       if (result.config && result.chartType) {
         setChartType(result.chartType);
-        const merged = { metric: 'amount', agg: 'SUM' as const, filters: [], ...result.config };
-        setConfig(merged);
-        const sql = buildSql(result.chartType, merged, target);
-        setSqlText(sql);
-        runPreview(sql);
+        // The mock copilot speaks the demo vocabulary; the validity check maps it onto the source's model
+        setConfig({ metric: 'amount', agg: 'SUM' as const, filters: [], ...result.config, measure: undefined });
         if (result.suggestedName && !name) setName(result.suggestedName);
       }
     }, 800);
@@ -201,7 +222,7 @@ export default function CardStudio() {
       data_source_id: dataset.id,
       // The editor keeps an empty filter list for convenience; don't store it as a change
       config: config.filters?.length ? config : (({ filters: _unused, ...rest }) => rest)(config),
-      sql_text: sqlText,
+      ...(mode === 'sql' ? { sql_text: sqlText } : { query: toSemanticQuery(chartType, config, primary?.name ?? dataset.name, timeColumn) }),
       created_via: mode,
       change_note: changeNote,
     };
@@ -261,14 +282,23 @@ export default function CardStudio() {
   );
 
   // On-card filter controls, available from every creation mode
-  const SEGMENT_CHOICES = [['ALL', 'Total AXP'], ['USCS', 'USCS'], ['GCS', 'GCS'], ['ICS', 'ICS']] as const;
   const PERIOD_CHOICES = [['month', 'Month'], ['quarter', 'Quarter'], ['year', 'Full year'], ['ytd', 'YTD']] as const;
 
-  const toggleOption = <T extends string>(key: 'segmentOptions' | 'periodOptions', all: readonly T[], v: T) => {
-    const current = (config.controls?.[key] as T[] | undefined)?.length ? (config.controls![key] as T[]) : [...all];
+  const filterableDims = (primary?.dimensions ?? []).filter((d) => d.type !== 'date');
+  const controlFilters = config.controls?.filters ?? [];
+  const toggleControlDim = (name: string) => {
+    const next = controlFilters.includes(name) ? controlFilters.filter((d) => d !== name) : [...controlFilters, name];
+    // Keep the model's order so a parent (e.g. segment) renders before its child (sub-segment)
+    const ordered = filterableDims.map((d) => d.name).filter((d) => next.includes(d));
+    updateConfig({ controls: { ...config.controls, segment: undefined, filters: ordered.length ? ordered : undefined } });
+  };
+
+  type Granularity = NonNullable<NonNullable<CardConfig['controls']>['periodOptions']>[number];
+  const toggleOption = (_key: 'periodOptions', all: readonly Granularity[], v: Granularity) => {
+    const current = config.controls?.periodOptions?.length ? config.controls.periodOptions : [...all];
     const next = current.includes(v) ? current.filter((x) => x !== v) : [...current, v];
     if (!next.length) return; // keep at least one option
-    updateConfig({ controls: { ...config.controls, [key]: next.length === all.length ? undefined : next } });
+    updateConfig({ controls: { ...config.controls, periodOptions: next.length === all.length ? undefined : next } });
   };
 
   const optionChip = (active: boolean) =>
@@ -280,30 +310,25 @@ export default function CardStudio() {
     <div>
       <span className={label}>On-card controls</span>
       <div className="flex flex-wrap gap-2">
-        {([['segment', 'Segment toggle'], ['period', 'Period dropdown']] as const).map(([key, text]) => {
-          const on = Boolean(config.controls?.[key]);
-          return (
-            <button key={key} onClick={() => updateConfig({ controls: { ...config.controls, [key]: !on } })}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                on ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-white text-ink-soft hover:border-accent/50'
-              }`}>
-              {on ? '✓ ' : ''}{text}
-            </button>
-          );
-        })}
+        <button onClick={() => updateConfig({ controls: { ...config.controls, period: !config.controls?.period } })}
+          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+            config.controls?.period ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-white text-ink-soft hover:border-accent/50'
+          }`}>
+          {config.controls?.period ? '✓ ' : ''}Period dropdown
+        </button>
       </div>
 
-      {config.controls?.segment && (
+      {filterableDims.length > 0 && (
         <div className="mt-2.5">
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">Segment options to offer</p>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">Filter dropdowns on the card</p>
           <div className="flex flex-wrap gap-1.5">
-            {SEGMENT_CHOICES.map(([id, text]) => {
-              const opts = config.controls?.segmentOptions;
-              const active = !opts?.length || opts.includes(id);
-              return <button key={id} onClick={() => toggleOption('segmentOptions', SEGMENT_CHOICES.map(([i]) => i), id)} className={optionChip(active)}>{text}</button>;
-            })}
+            {filterableDims.map((d) => (
+              <button key={d.name} onClick={() => toggleControlDim(d.name)} className={optionChip(controlFilters.includes(d.name))}>
+                {d.label || d.name}
+              </button>
+            ))}
           </div>
-          <p className="mt-1 text-[10px] text-ink-faint">GCS and ICS get a multi-select sub-segment breakdown automatically.</p>
+          <p className="mt-1 text-[10px] text-ink-faint">Each picks values from this card's source; later ones narrow to earlier selections. Locked dashboard filters can't be overridden.</p>
         </div>
       )}
 
@@ -441,17 +466,26 @@ export default function CardStudio() {
 
               <div>
                 <span className={label}>{chartType === 'kpi' ? 'Value' : chartType === 'bar' ? 'X-axis — value' : 'Y-axis — value'}</span>
-                <div className="grid grid-cols-2 gap-3">
-                  <select value={config.agg} onChange={(e) => updateConfig({ agg: e.target.value as CardConfig['agg'] })} className={field} aria-label="Aggregation">
-                    <option value="SUM">SUM</option>
-                    <option value="AVG">AVG</option>
-                    <option value="COUNT">COUNT</option>
-                  </select>
-                  <select value={config.metric} onChange={(e) => updateConfig({ metric: e.target.value })} className={field} disabled={config.agg === 'COUNT'} aria-label="Metric">
-                    {numericColumns_.map((c) => <option key={c} value={c}>{c}</option>)}
-                    {!numericColumns_.length && <option value="">(no numeric columns)</option>}
-                  </select>
-                </div>
+                <select value={config.measure ?? '__custom'} aria-label="Measure" className={field}
+                  onChange={(e) => updateConfig(e.target.value === '__custom'
+                    ? { measure: undefined, agg: config.agg ?? 'SUM', metric: config.metric && numericColumns_.includes(config.metric) ? config.metric : numericColumns_[0] }
+                    : { measure: e.target.value })}>
+                  {measures.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  <option value="__custom">Custom aggregate…</option>
+                </select>
+                {!config.measure && (
+                  <div className="mt-2 grid grid-cols-2 gap-3">
+                    <select value={config.agg} onChange={(e) => updateConfig({ agg: e.target.value as CardConfig['agg'] })} className={field} aria-label="Aggregation">
+                      <option value="SUM">SUM</option>
+                      <option value="AVG">AVG</option>
+                      <option value="COUNT">COUNT</option>
+                    </select>
+                    <select value={config.metric} onChange={(e) => updateConfig({ metric: e.target.value })} className={field} disabled={config.agg === 'COUNT'} aria-label="Column">
+                      {numericColumns_.map((c) => <option key={c} value={c}>{c}</option>)}
+                      {!numericColumns_.length && <option value="">(no numeric columns)</option>}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {chartType !== 'kpi' && (

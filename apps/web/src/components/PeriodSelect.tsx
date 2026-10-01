@@ -25,12 +25,21 @@ const quarterPeriod = (q: number): Period => ({
 });
 const yearPeriod = (y: number): Period => ({ label: `FY '${String(y).slice(2)}`, from: `${y}-01-01`, to: `${y}-12-31` });
 
+export const ALL_TIME: Period = { label: 'All time' };
+
 const SECTIONS: { id: PeriodGranularity; title: string; periods: Period[] }[] = [
   { id: 'month', title: 'Month (2026)', periods: MONTHS.map((_, i) => monthPeriod(i)) },
   { id: 'quarter', title: 'Quarter', periods: [1, 2, 3, 4].map(quarterPeriod) },
   { id: 'year', title: 'Full year', periods: [2023, 2024, 2025, 2026].map(yearPeriod) },
-  { id: 'ytd', title: 'Year-to-date', periods: [DEFAULT_PERIOD, { label: 'All time' }] },
+  { id: 'ytd', title: 'Year-to-date', periods: [DEFAULT_PERIOD, ALL_TIME] },
 ];
+
+/** Period from a stored default: "ytd", "all", or a period label such as "Q1 '26". */
+export function periodFromPreset(preset: string | undefined): Period {
+  if (!preset || preset === 'ytd') return DEFAULT_PERIOD;
+  if (preset === 'all') return ALL_TIME;
+  return SECTIONS.flatMap((s) => s.periods).find((p) => p.label === preset) ?? DEFAULT_PERIOD;
+}
 
 interface Props {
   value: Period;

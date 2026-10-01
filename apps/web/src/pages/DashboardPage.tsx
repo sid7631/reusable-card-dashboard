@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout';
 import { api } from '../lib/api';
-import type { Card, CardData, ChartType, DashboardDetail, DashboardItem } from '../lib/types';
+import type { AppliedFilters, Card, CardData, ChartType, DashboardDetail, DashboardFilterDef, DashboardItem } from '../lib/types';
+import { cardControlDims, dimensionLabel, initialValues, summarize, toApplied, type FilterValues } from '../lib/filters';
 import ChartRenderer from '../components/ChartRenderer';
 import CardFrame from '../components/CardFrame';
-import SegmentToggles, { segmentLabel, type SegmentSelection } from '../components/SegmentToggles';
-import PeriodSelect, { DEFAULT_PERIOD, type Period } from '../components/PeriodSelect';
+import PeriodSelect, { periodFromPreset, type Period } from '../components/PeriodSelect';
+import FilterSelect from '../components/FilterSelect';
+import FilterBar from '../components/FilterBar';
+import DashboardFilterEditor from '../components/DashboardFilterEditor';
 import type { CardContext } from '../components/CardActions';
 import AssetBadges from '../components/AssetBadges';
 import VersionHistory from '../components/VersionHistory';
@@ -19,11 +22,13 @@ const DEFAULT_SIZE: Partial<Record<ChartType, { w: number; h: number }>> = {
   kpi: { w: 3, h: 2 },
 };
 
-function DashboardCard({ card, dashboardId, selection, period, editMode, onRemove }: {
+function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onRemove }: {
   card: DashboardItem;
   dashboardId: number;
-  selection: SegmentSelection;
-  period: Period;
+  defs: DashboardFilterDef[];
+  /** Dashboard-level filters (business dimension names) — the card may override unlocked ones. */
+  applied: AppliedFilters;
+  period: Period | null;
   editMode: boolean;
   onRemove: () => void;
 }) {
@@ -31,52 +36,83 @@ function DashboardCard({ card, dashboardId, selection, period, editMode, onRemov
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
-  // Card-level overrides (null = follow the dashboard); reset when dashboard filters change
-  const [segOverride, setSegOverride] = useState<SegmentSelection | null>(null);
+  // Card-level overrides (absent = follow the dashboard); reset whenever the dashboard filters change
+  const [dimOverrides, setDimOverrides] = useState<Record<string, string[]>>({});
   const [perOverride, setPerOverride] = useState<Period | null>(null);
-  useEffect(() => { setSegOverride(null); }, [selection]);
-  useEffect(() => { setPerOverride(null); }, [period]);
+  const appliedKey = JSON.stringify(applied);
+  useEffect(() => { setDimOverrides({}); setPerOverride(null); }, [appliedKey]);
 
-  const effSelection = segOverride ?? selection;
-  const effPeriod = perOverride ?? period;
+  const lockedDims = new Set(defs.filter((d) => d.locked && d.kind !== 'period').map((d) => d.dimension));
+  const periodLocked = defs.some((d) => d.kind === 'period' && d.locked);
+  const controls_ = card.config.controls;
+  const controlDims = cardControlDims(card).filter((d) => card.filterable?.dimensions.includes(d) ?? true);
+
+  const effDims = { ...applied.dims };
+  for (const [dim, values] of Object.entries(dimOverrides)) {
+    if (lockedDims.has(dim)) continue;
+    if (values.length) effDims[dim] = values;
+    else delete effDims[dim];
+  }
+  const effPeriod = (!periodLocked && perOverride) || period;
+  const effective: AppliedFilters = { dims: effDims, from: effPeriod?.from, to: effPeriod?.to };
+  const effectiveKey = JSON.stringify(effective);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setError(undefined);
-    api.cardData(card.id, {
-      segment: effSelection.segment,
-      subSegments: effSelection.subSegments,
-      from: effPeriod.from,
-      to: effPeriod.to,
-    }, { versionId: card.card_version_id, dashboardId })
+    api.cardData(card.id, JSON.parse(effectiveKey) as AppliedFilters, { versionId: card.card_version_id, dashboardId })
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [card.id, card.card_version_id, dashboardId, effSelection, effPeriod]);
+  }, [card.id, card.card_version_id, dashboardId, effectiveKey]);
 
-  const cardControls = card.config.controls;
-  const controls = (cardControls?.segment || cardControls?.period) ? (
+  const setOverride = (dim: string, values: string[]) => setDimOverrides((o) => {
+    const next = { ...o, [dim]: values };
+    // A child dimension shown on the same card (e.g. sub_segment under segment) resets with its parent
+    const childIdx = controlDims.indexOf(dim) + 1;
+    if (childIdx > 0 && childIdx < controlDims.length) next[controlDims[childIdx]] = [];
+    return next;
+  });
+
+  const controls = (controlDims.length || controls_?.period) ? (
     <>
-      {cardControls?.segment
-        ? <SegmentToggles compact value={effSelection} onChange={setSegOverride} options={cardControls.segmentOptions} scheme={card.config.scheme} />
-        : <span />}
-      {cardControls?.period && (
-        <PeriodSelect compact value={effPeriod} onChange={setPerOverride} options={cardControls.periodOptions} scheme={card.config.scheme} />
+      <div className="flex flex-wrap gap-1">
+        {controlDims.map((dim, i) => {
+          const narrowing = Object.fromEntries(controlDims.slice(0, i).filter((d) => effDims[d]?.length).map((d) => [d, effDims[d]]));
+          const def = defs.find((d) => d.dimension === dim);
+          return (
+            <FilterSelect key={dim} compact label={def?.label || dimensionLabel(dim)} scheme={card.config.scheme}
+              multi={def ? def.kind === 'multi' : i > 0} value={effDims[dim] ?? []} onChange={(v) => setOverride(dim, v)}
+              allowed={dim === 'segment' ? controls_?.segmentOptions?.filter((o) => o !== 'ALL') : undefined}
+              load={() => api.cardFilterOptions(card.id, dim, narrowing, { versionId: card.card_version_id, dashboardId }).then((r) => r.values)}
+              loadKey={JSON.stringify(narrowing)}
+              disabled={lockedDims.has(dim)} title={lockedDims.has(dim) ? 'Locked by the dashboard' : undefined} />
+          );
+        })}
+      </div>
+      {controls_?.period && effPeriod && (
+        <PeriodSelect compact value={effPeriod} onChange={setPerOverride} options={controls_.periodOptions} scheme={card.config.scheme} />
       )}
     </>
   ) : undefined;
 
+  const ignored = (data.meta.ignored ?? []).map((d) => (d === 'period' ? 'period' : defs.find((f) => f.dimension === d)?.label || dimensionLabel(d)));
+  const notices = [
+    ...(card.update_available ? [{ label: 'Update', title: 'A newer version of this card exists' }] : []),
+    ...(ignored.length ? [{ label: 'Partly filtered', title: `Not filtered by ${ignored.join(', ')} — the card's source doesn't have ${ignored.length === 1 ? 'that field' : 'those fields'}` }] : []),
+  ];
+
   const context: CardContext = {
-    segmentLabel: segmentLabel(effSelection),
-    periodLabel: effPeriod.label,
+    segmentLabel: summarize(effDims),
+    periodLabel: effPeriod?.label ?? 'All time',
     filters: (card.config.filters ?? []).map((f) => `${f.field} = '${f.value}'`),
   };
 
   return (
-    <CardFrame card={card} rows={data.rows} controls={controls}
-      notice={card.update_available ? 'A newer version of this card exists' : undefined} context={context} editMode={editMode} onRemove={onRemove} loading={loading} error={error}>
+    <CardFrame card={card} rows={data.rows} controls={controls} notices={notices} context={context} editMode={editMode}
+      onRemove={onRemove} loading={loading} error={error}>
       <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} scheme={card.config.scheme} />
     </CardFrame>
   );
@@ -87,8 +123,9 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<DashboardDetail | null>(null);
   const [items, setItems] = useState<DashboardItem[]>([]);
-  const [selection, setSelection] = useState<SegmentSelection>({ segment: 'ALL', subSegments: [] });
-  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
+  const [period, setPeriod] = useState<Period | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [library, setLibrary] = useState<Card[]>([]);
@@ -96,9 +133,16 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState<'history' | 'share' | null>(null);
 
+  // Filter state starts from the dashboard's defaults
+  const resetFilters = (d: DashboardDetail) => {
+    setFilterValues(initialValues(d.filters));
+    const p = d.filters.find((f) => f.kind === 'period');
+    setPeriod(p ? periodFromPreset(p.default[0]) : null);
+  };
+
   const loadDashboard = useCallback(() => {
     api.dashboard(id!)
-      .then((d) => { setDashboard(d); setItems(d.items); setDirty(false); })
+      .then((d) => { setDashboard(d); setItems(d.items); setDirty(false); resetFilters(d); })
       .catch(() => navigate('/dashboards'));
   }, [id, navigate]);
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
@@ -167,6 +211,7 @@ export default function DashboardPage() {
   }
 
   const onDashboard = new Set(items.map((it) => it.id));
+  const applied = toApplied(dashboard.filters, filterValues, period);
 
   return (
     <div className="px-8 py-7">
@@ -213,14 +258,18 @@ export default function DashboardPage() {
               Read-only
             </span>
           )}
-          <PeriodSelect value={period} onChange={setPeriod} />
         </div>
       </div>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <SegmentToggles value={selection} onChange={setSelection} />
+        <FilterBar dashboardId={dashboard.id} defs={dashboard.filters} values={filterValues} period={period}
+          onValues={setFilterValues} onPeriod={setPeriod} />
         {editMode && (
           <div className="flex items-center gap-2">
+            <button onClick={() => setFiltersOpen(true)}
+              className="rounded-xl border border-line bg-white px-4 py-2 font-display text-sm font-semibold text-ink-soft transition hover:border-accent/50 hover:text-ink">
+              Filters
+            </button>
             <button
               onClick={() => setDrawerOpen(true)}
               className="rounded-xl border border-accent bg-white px-4 py-2 font-display text-sm font-semibold text-accent transition hover:bg-accent-soft"
@@ -270,7 +319,7 @@ export default function DashboardPage() {
       >
         {items.map((it) => (
           <div key={String(it.id)}>
-            <DashboardCard card={it} dashboardId={dashboard.id} selection={selection} period={period} editMode={editMode} onRemove={() => removeCard(it.id)} />
+            <DashboardCard card={it} dashboardId={dashboard.id} defs={dashboard.filters} applied={applied} period={period} editMode={editMode} onRemove={() => removeCard(it.id)} />
           </div>
         ))}
       </Grid>
@@ -282,6 +331,10 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {filtersOpen && (
+        <DashboardFilterEditor dashboard={dashboard} onClose={() => setFiltersOpen(false)}
+          onSaved={(d) => { setDashboard(d); setItems(d.items); resetFilters(d); setFiltersOpen(false); }} />
+      )}
       {dialog === 'history' && (
         <VersionHistory kind="dashboards" assetId={dashboard.id} assetName={dashboard.name} canEdit={dashboard.can_edit}
           onClose={() => setDialog(null)} onRestored={loadDashboard} />

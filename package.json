@@ -1,12 +1,18 @@
 {
-  "name": "reusable-card-dashboard",
-  "version": "0.1.0",
+  "name": "spendboard",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "npm run dev --prefix server & npm run dev --prefix client & wait",
-    "dev:server": "npm run dev --prefix server",
-    "dev:client": "npm run dev --prefix client",
-    "seed": "npm run seed --prefix server",
-    "setup": "npm install --prefix server && npm install --prefix client"
+    "setup": "npm install --prefix apps/web && cd backend && uv sync",
+    "infra": "docker compose -f infra/docker-compose.yml up -d postgres redis",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "migrate": "cd backend && uv run alembic upgrade head",
+    "seed": "cd backend && uv run python -m app.seed",
+    "seed:reset": "cd backend && uv run python -m app.seed --reset",
+    "dev:api": "cd backend && uv run uvicorn app.main:app --reload --port 8010",
+    "dev:web": "npm run dev --prefix apps/web",
+    "dev": "npm run infra && npm run migrate && npm run seed && (npm run dev:api & npm run dev:web & wait)",
+    "test": "cd backend && uv run pytest",
+    "stack": "docker compose -f infra/docker-compose.yml --profile full up --build"
   }
 }

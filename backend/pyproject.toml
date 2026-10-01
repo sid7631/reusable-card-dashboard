@@ -1,0 +1,34 @@
+[project]
+name = "spendboard-api"
+version = "0.2.0"
+description = "SpendBoard API — governed, versioned cards and dashboards over pluggable data sources"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "pyjwt[crypto]>=2.10",
+  "httpx>=0.28",
+  "sqlglot>=25.30",
+  "redis>=5.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "cryptography>=43",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.uv]
+package = false

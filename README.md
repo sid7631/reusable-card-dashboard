@@ -1,85 +1,81 @@
-# SpendBoard — Reusable Cards & Dashboards (POC)
+# SpendBoard — Governed, Reusable Cards & Dashboards
 
-Build chart **cards** (widgets) bound to a data source + SQL, store them once, and reuse them
-across any number of drag-and-drop **dashboards**. Styled after the Enterprise Spend Overview
-mockups (Amex-style spend analytics).
+Build chart **cards** bound to a data source + SQL, store them once, and reuse them across any number of
+drag-and-drop **dashboards**. Cards, dashboards and data sources are **versioned**, live in a **private**
+space or the **global** library, and are published through admin approval.
+
+Design and roadmap: [docs/architecture.md](docs/architecture.md).
 
 ## Stack
 
-| Layer    | Tech                                                                  |
-| -------- | --------------------------------------------------------------------- |
-| Frontend | React 18 + TypeScript (Vite), Tailwind CSS v4, Recharts, react-grid-layout, Monaco editor |
-| Backend  | Node.js (Express), better-sqlite3                                      |
-| Database | SQLite — seeded with 60k dummy charge transactions + starter cards/dashboard |
+| Layer | Tech |
+| --- | --- |
+| Web | React 18 + TypeScript (Vite), Tailwind v4, Recharts, react-grid-layout, Monaco |
+| Auth (simulated SSO) | Node service in the web deployment — issues RS256 JWTs, publishes JWKS |
+| API | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, SQLGlot |
+| Metadata | Postgres 16 |
+| Cache / queue | Redis 7 (wired in from phase 5) |
+| Demo data | Postgres `demo_warehouse` — 60k charge transactions, queried through a read-only role |
 
-## Run it
+```
+apps/web/            SPA + server/index.mjs (auth + production static/proxy)
+backend/app/         FastAPI: core (config, db, auth), governance, connectors, execution, api, seed
+backend/alembic/     migrations
+infra/               docker-compose (postgres, redis, api, web) + postgres init
+docs/                architecture
+```
+
+## Run it (local development)
+
+Prerequisites: Docker, Node 20+, [uv](https://docs.astral.sh/uv/).
 
 ```bash
-npm run setup   # installs server + client deps
-npm run dev     # API on :4000, app on :5173
+npm run setup     # web deps + Python venv
+cp backend/.env.example backend/.env
+npm run dev       # postgres+redis in Docker, migrate, seed, API on :8010, web on :5173 (auth on :3001)
 ```
 
-Open http://localhost:5173 — the seeded **Enterprise Spend Overview** dashboard has 12 cards.
+Open http://localhost:5173 and pick an account: **Avery Admin** (admin) or **Riley / Jordan Analyst** (users).
 
-Reseed demo data anytime with `npm run seed` (deterministic PRNG — same data every time).
+Full containerised stack instead: `npm run stack` → http://localhost:3001.
 
-## How it works
+Host ports default to Postgres **5433**, Redis **6380**, API **8010** to avoid clashing with local services;
+override with `POSTGRES_PORT`, `REDIS_PORT`, `API_PORT`, `WEB_PORT`.
 
-- **Card = SQL + mapping.** Every card row in SQLite stores its `chart_type`, `dataset`,
-  builder `config` (dimension/metric/agg/filters), and `sql_text`. Dashboards only reference
-  card IDs via the `dashboard_cards` mapping table (with x/y/w/h layout), so one card can live
-  on many dashboards.
-- **`{{filters}}` token.** Card SQL keeps a `{{filters}}` placeholder; at query time the API
-  resolves it to the dashboard's segment + reporting-period conditions. That's how one stored
-  card responds to Total AXP / USCS / GCS / ICS toggles and the period dropdown.
-- **Three creation modes** (Card Studio):
-  - **Builder** — no-code: pick chart type, dimension, aggregation, filters; SQL is generated.
-  - **SQL** — Monaco editor, run arbitrary `SELECT`s against the SQLite DB (read-only connection,
-    single-statement, SELECT-only enforced server-side).
-  - **Copilot** — mock assistant that pattern-matches prompts ("top 5 merchants by charge
-    volume") into builder configs. No LLM calls.
-- **Dashboard view** — User/Admin toggle. Admin mode enables drag/resize (react-grid-layout),
-  add/remove widgets from the card library, and Save persists the layout. Every card has
-  Export CSV / View SQL / Share (mock) actions.
-- **KPI YoY** — KPI cards automatically compare the selected window against the same window one
-  year earlier and render the delta.
-- **Bar list widgets** — the flagship card type from the mockups (widgets 2.1–2.5): a table
-  with an inline bar column, optional sub-category column (industry → sub-industry), optional
-  rank circles (Top Merchants), and per-row **$ YoY / % YoY** deltas. When a period is selected
-  the API re-runs the card's SQL over the same window one year earlier (`meta.prevRows`) and
-  the client joins the two result sets per row.
-- **Color schemes** — each card can pick a palette (Classic Blue default, plus Emerald, Sunset,
-  Violet, Ocean Teal, Slate Mono) in Card Studio; stored in the card config and applied to
-  bars, lines, donuts and the bar-list gradient/rank circles.
-- **Axis mapping** — the Builder exposes X-axis (category) / Y-axis (value) selectors; in SQL
-  mode you can explicitly map which result column is the X axis and which numeric columns plot
-  as Y series (stored as `xKey`/`yKeys` in the card config, inference is the fallback).
-- **On-card controls** — any card can opt into its own segment toggle and/or reporting-period
-  dropdown (Card Studio → "On-card controls"), and the card creator chooses exactly which
-  segment chips (Total AXP / USCS / GCS / ICS) and period granularities (Month / Quarter /
-  Full year / YTD) are offered. These override the dashboard-level filters for that widget
-  only, and reset when the dashboard filters change.
-- **Segment toggles** — Total AXP and USCS are single-select; GCS and ICS open a multi-select
-  sub-segment breakdown (GCS: SBS/MM/G&L, ICS: Consumer/SBS/Corporate) that filters via
-  `sub_segment IN (...)`.
-- **Widget action panels** — every card's menu opens drill-down panels: **Export Data**
-  (CSV/Excel/PDF, column picker, "filters applied" metadata), **View SQL Script** (generated
-  query + parameters applied), and **Share** (recipient chips, permission, format, message,
-  read-only link toggle — mock send).
+Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo data and starter assets),
+`npm run infra:down`.
 
-## API surface
+## How it works (current state)
+
+- **Assets & versions.** A card, dashboard or data source is an `asset` (owner, scope, lineage) plus immutable
+  `asset_versions` holding a typed spec. Every save appends a version; a database trigger rejects edits to
+  existing versions.
+- **Pinning.** A dashboard version pins card versions, and a card version pins a data-source version — editing a
+  card never silently changes a dashboard. Dashboards flag cards with a newer version ("Update").
+- **Scopes & permissions.** New assets are private to their creator. Global assets are read-only for users and
+  editable by admins. Private assets can be shared with users as `view` or `edit` (API model in place; sharing UI
+  arrives with phase 1).
+- **Auth.** The SPA gets a signed token from `/auth/token` and sends it as a Bearer token; FastAPI verifies it
+  against the JWKS and provisions the user on first request.
+- **Safe queries.** Card SQL is parsed with SQLGlot (exactly one read-only `SELECT`), dashboard filters are bound as
+  query parameters at the `{{filters}}` token, and execution runs in a read-only transaction with a statement
+  timeout and a row cap.
+- **YoY.** With a period selected, the card's query also runs for the same window a year earlier — a single delta
+  for KPIs, per-row deltas for bar lists.
+
+## API (selection)
 
 ```
-GET    /api/datasets                 dataset metadata + dimension values (builder dropdowns)
-POST   /api/query                    ad-hoc SELECT (studio preview)
-GET    /api/cards                    card library
-POST   /api/cards                    create card
-PUT    /api/cards/:id                update card
-DELETE /api/cards/:id                delete card
-GET    /api/cards/:id/data           execute a card's SQL with ?segment=&from=&to=
-GET    /api/dashboards               list dashboards (+card counts)
-POST   /api/dashboards               create dashboard
-GET    /api/dashboards/:id           dashboard + its cards + layout
-PUT    /api/dashboards/:id/items     replace card mapping + layout
-DELETE /api/dashboards/:id           delete dashboard (cards survive)
+GET  /api/me
+GET  /api/datasets                 builder metadata per visible data source
+POST /api/query                    studio preview {sql, data_source_id}
+GET  /api/cards?scope=global|private|shared      POST /api/cards
+GET  /api/cards/:id[?version_id]   PUT /api/cards/:id (new version)   DELETE (archive)
+GET  /api/cards/:id/versions
+GET  /api/cards/:id/data?dashboard_id&version_id&segment&sub_segments&from&to
+GET  /api/dashboards               POST /api/dashboards
+GET  /api/dashboards/:id           PUT /api/dashboards/:id/items (new version)   DELETE (archive)
+GET  /api/dashboards/:id/versions
 ```
+
+Interactive docs: http://localhost:8010/docs.

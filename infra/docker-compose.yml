@@ -1,0 +1,52 @@
+name: spendboard
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["${POSTGRES_PORT:-5433}:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports: ["${REDIS_PORT:-6380}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  api:
+    profiles: [full]
+    build: ../backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/spendboard
+      WAREHOUSE_ADMIN_URL: postgresql://postgres:postgres@postgres:5432/demo_warehouse
+      DEMO_WAREHOUSE_HOST: postgres
+      DEMO_WAREHOUSE_PORT: "5432"
+      DEMO_WAREHOUSE_PASSWORD: reader
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://web:3001/auth/.well-known/jwks.json
+    ports: ["${API_PORT:-8010}:8010"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    profiles: [full]
+    build: ../apps/web
+    environment:
+      API_URL: http://api:8010
+      PORT: "3001"
+    ports: ["${WEB_PORT:-3001}:3001"]
+    depends_on: [api]
+
+volumes:
+  pgdata:

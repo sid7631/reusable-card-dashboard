@@ -67,7 +67,8 @@ async def _head_spec(session: AsyncSession, asset: Asset) -> DataSourceSpec:
 
 def _out(asset: Asset, version: AssetVersion, access: str | None, owner: str | None, gov=None) -> dict[str, Any]:
     spec = DataSourceSpec.model_validate(version.spec)
-    return {**asset_meta(asset, version, access, owner, gov), "type": spec.type, "spec": version.spec,
+    # Always the current spec shape — older versions (e.g. pre-semantic-model) are upgraded on read
+    return {**asset_meta(asset, version, access, owner, gov), "type": spec.type, "spec": spec.model_dump(mode="json"),
             "has_credentials": bool(spec.secret_refs())}
 
 

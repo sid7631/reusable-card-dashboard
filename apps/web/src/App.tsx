@@ -10,6 +10,7 @@ import DataSourcesPage from './pages/DataSourcesPage';
 import DataSourceEditor from './pages/DataSourceEditor';
 import RequestDetailPage from './pages/RequestDetailPage';
 import { api, REQUESTS_CHANGED } from './lib/api';
+import ErrorBoundary from './components/ErrorBoundary';
 import { AuthContext, currentUser, signOut, type SessionUser } from './lib/auth';
 import { APP_THEMES, AppThemeContext, applyAppTheme, loadAppTheme } from './lib/theme';
 
@@ -153,6 +154,7 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
         </div>
       </aside>
       <main className={`flex-1 transition-all duration-300 ${collapsed ? 'ml-16' : 'ml-56'}`}>
+        <ErrorBoundary resetKey={location.pathname}>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboards" replace />} />
           <Route path="/login" element={<Navigate to="/dashboards" replace />} />
@@ -167,6 +169,7 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
           <Route path="/requests" element={<RequestsPage />} />
           <Route path="/requests/:id" element={<RequestDetailPage />} />
         </Routes>
+        </ErrorBoundary>
       </main>
     </div>
     </AppThemeContext.Provider>

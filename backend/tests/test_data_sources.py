@@ -191,3 +191,13 @@ async def test_rest_source_paginates_authenticates_and_queries(user, fake_api):
     fake_api.clear()
     await user.post("/api/query", {"sql": "SELECT COUNT(*) AS n FROM scores", "data_source_id": source["id"]})
     assert fake_api == []
+
+
+async def test_legacy_specs_are_served_in_the_current_shape(user, seeded):
+    # The seeded demo source may predate the semantic model; clients always get `model`
+    for source in (await user.get("/api/data-sources")).json():
+        assert "datasets" in source["spec"]["model"]
+        assert "tables" not in source["spec"] and "dimensions" not in source["spec"]
+    demo_id = next(s["id"] for s in (await user.get("/api/data-sources")).json() if s["name"] == "Demo Warehouse")
+    demo = (await user.get(f"/api/data-sources/{demo_id}")).json()
+    assert demo["spec"]["model"]["datasets"][0]["name"] == "transactions"

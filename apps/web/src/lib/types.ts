@@ -93,7 +93,48 @@ export interface VersionInfo {
   created_by: number;
   created_by_name: string;
   created_at: string;
+  is_head: boolean;
 }
+
+export interface VersionDetail extends VersionInfo {
+  description: string;
+  spec: Record<string, unknown>;
+}
+
+export interface SpecChange {
+  path: string;
+  op: 'added' | 'removed' | 'changed';
+  before: unknown;
+  after: unknown;
+  /** Unified line diff for multi-line text such as SQL. */
+  lines: string[];
+}
+
+export interface VersionDiff {
+  from: number;
+  to: number;
+  changes: SpecChange[];
+  /** Dashboard placement id → card name. */
+  labels: Record<string, string>;
+}
+
+export interface Share {
+  user_id: number;
+  name: string;
+  email: string;
+  permission: 'view' | 'edit';
+  created_at: string;
+}
+
+export interface DirectoryEntry {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+/** URL segment for each versioned asset kind. */
+export type AssetKind = 'cards' | 'dashboards' | 'data-sources';
 
 export interface Dataset {
   /** Data-source asset id. */

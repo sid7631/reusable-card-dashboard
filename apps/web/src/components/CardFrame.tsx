@@ -71,7 +71,7 @@ export default function CardFrame({ card, rows, children, controls, context = DE
             <div className="rise-in absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
               <MenuItem label="Export data" icon="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" onClick={action(() => setModal('export'))} />
               <MenuItem label="View SQL script" icon="M5 4l-3 4 3 4m6-8l3 4-3 4" onClick={action(() => setModal('sql'))} />
-              <MenuItem label="Share" icon="M11 5a2 2 0 102-2 2 2 0 00-2 2zm0 0L5 8m0 0a2 2 0 10-2 2 2 2 0 002-2zm0 2l6 3m0 0a2 2 0 102 2 2 2 0 00-2-2z" onClick={action(() => setModal('share'))} />
+              <MenuItem label="Send snapshot" icon="M11 5a2 2 0 102-2 2 2 0 00-2 2zm0 0L5 8m0 0a2 2 0 10-2 2 2 2 0 002-2zm0 2l6 3m0 0a2 2 0 102 2 2 2 0 00-2-2z" onClick={action(() => setModal('share'))} />
               {editMode && onRemove && (
                 <>
                   <div className="my-1 border-t border-line" />

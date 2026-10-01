@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.listing import access_for, list_visible, owner_name, versions_of
-from app.api.serializers import asset_meta, card_out, version_out
+from app.api.listing import access_for, list_visible, owner_name
+from app.api.serializers import asset_meta, card_out
 from app.core.auth import CurrentUser, Session
 from app.governance.service import archive_asset, create_asset, get_asset, save_version
 from app.governance.specs import DashboardSpec
@@ -89,12 +89,6 @@ async def delete_dashboard(dashboard_id: int, user: CurrentUser, session: Sessio
     await archive_asset(session, user, asset, access)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/{dashboard_id}/versions")
-async def dashboard_versions(dashboard_id: int, user: CurrentUser, session: Session) -> list[dict[str, Any]]:
-    asset, _ = await get_asset(session, user, "dashboard", dashboard_id)
-    return [version_out(v, author) for v, author in await versions_of(session, asset.id)]
 
 
 async def _detail(session: AsyncSession, user: User, asset: Asset, access: str) -> dict[str, Any]:

@@ -4,6 +4,8 @@ import { api } from '../lib/api';
 import type { Card, CardData } from '../lib/types';
 import ChartRenderer from '../components/ChartRenderer';
 import AssetBadges from '../components/AssetBadges';
+import VersionHistory from '../components/VersionHistory';
+import ShareDialog from '../components/ShareDialog';
 
 type Tab = 'all' | 'global' | 'private' | 'shared';
 const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global library'], ['private', 'My cards'], ['shared', 'Shared with me']];
@@ -35,6 +37,7 @@ function CardPreview({ card }: { card: Card }) {
 export default function CardsPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [tab, setTab] = useState<Tab>('all');
+  const [dialog, setDialog] = useState<{ type: 'history' | 'share'; card: Card } | null>(null);
 
   const load = () => api.cards(tab === 'all' ? undefined : tab).then(setCards).catch(console.error);
   useEffect(() => { load(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -84,6 +87,14 @@ export default function CardsPage() {
             <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
               <span className="font-mono text-[11px] text-ink-faint">{c.chart_type} · via {c.created_via}{c.owner_name ? ` · ${c.owner_name}` : ''}</span>
               <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                <button onClick={() => setDialog({ type: 'history', card: c })} className="rounded-lg px-2.5 py-1 text-xs font-semibold text-ink-soft transition hover:bg-canvas hover:text-ink">
+                  History
+                </button>
+                {c.access === 'owner' && (
+                  <button onClick={() => setDialog({ type: 'share', card: c })} className="rounded-lg px-2.5 py-1 text-xs font-semibold text-ink-soft transition hover:bg-canvas hover:text-ink">
+                    Share
+                  </button>
+                )}
                 <Link to={`/cards/${c.id}/edit`} className="rounded-lg px-2.5 py-1 text-xs font-semibold text-accent transition hover:bg-accent-soft">
                   {c.can_edit ? 'Edit' : 'Open'}
                 </Link>
@@ -102,6 +113,14 @@ export default function CardsPage() {
           </div>
         )}
       </div>
+
+      {dialog?.type === 'history' && (
+        <VersionHistory kind="cards" assetId={dialog.card.id} assetName={dialog.card.name} canEdit={dialog.card.can_edit}
+          onClose={() => setDialog(null)} onRestored={load} />
+      )}
+      {dialog?.type === 'share' && (
+        <ShareDialog kind="cards" assetId={dialog.card.id} assetName={dialog.card.name} onClose={() => setDialog(null)} />
+      )}
     </div>
   );
 }

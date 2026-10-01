@@ -132,3 +132,48 @@ async def archive_asset(session: AsyncSession, user: User, asset: Asset, level: 
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner (or an admin, for global assets) can delete.")
     asset.archived_at = datetime.now(UTC)
     session.add(AuditEvent(actor_id=user.id, action="asset.archived", asset_id=asset.id))
+
+
+async def restore_version(session: AsyncSession, user: User, asset: Asset, version: AssetVersion) -> AssetVersion:
+    """Restoring never rewrites history: it appends a new version carrying the old content."""
+    if version.id == asset.head_version_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "That version is already current.")
+    return await save_version(session, user, asset, name=version.name, description=version.description,
+                              spec=version.spec, change_note=f"Restored v{version.version_no}")
+
+
+# ---------------------------------------------------------------- sharing
+def _require_owner(asset: Asset, level: Access) -> None:
+    if asset.scope == "global":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Global assets are visible to everyone — sharing applies to private assets.")
+    if level != "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can change sharing.")
+
+
+async def set_share(session: AsyncSession, user: User, asset: Asset, level: Access, grantee_id: int,
+                    permission: str) -> AssetShare:
+    _require_owner(asset, level)
+    grantee = await session.get(User, grantee_id)
+    if grantee is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    if grantee.id == user.id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "You already own this asset.")
+    share = await session.get(AssetShare, (asset.id, "user", grantee.id))
+    if share is None:
+        share = AssetShare(asset_id=asset.id, grantee_type="user", grantee_id=grantee.id, permission=permission,
+                           granted_by=user.id)
+        session.add(share)
+    else:
+        share.permission = permission
+    session.add(AuditEvent(actor_id=user.id, action="share.granted", asset_id=asset.id,
+                           payload={"grantee_id": grantee.id, "permission": permission}))
+    return share
+
+
+async def remove_share(session: AsyncSession, user: User, asset: Asset, level: Access, grantee_id: int) -> None:
+    _require_owner(asset, level)
+    share = await session.get(AssetShare, (asset.id, "user", grantee_id))
+    if share is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not shared with that user.")
+    await session.delete(share)
+    session.add(AuditEvent(actor_id=user.id, action="share.revoked", asset_id=asset.id, payload={"grantee_id": grantee_id}))

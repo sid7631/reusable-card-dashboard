@@ -7,6 +7,7 @@ import { SCHEMES } from '../lib/format';
 import { buildSql, copilotRespond } from '../lib/builder';
 import ChartRenderer from '../components/ChartRenderer';
 import Modal from '../components/Modal';
+import VersionHistory from '../components/VersionHistory';
 
 type Mode = 'builder' | 'sql' | 'copilot';
 
@@ -73,6 +74,8 @@ export default function CardStudio() {
   // Global cards are read-only for non-admins (fork + propose arrives with the approval flow)
   const [canEdit, setCanEdit] = useState(true);
   const [versionNo, setVersionNo] = useState<number>();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => { api.datasets().then((d) => setDataset(d[0])).catch(console.error); }, []);
 
@@ -89,7 +92,7 @@ export default function CardStudio() {
       setCanEdit(c.can_edit);
       setVersionNo(c.version_no);
     }).catch(() => navigate('/cards'));
-  }, [id, navigate]);
+  }, [id, navigate, reloadKey]);
 
   const dataSourceId = dataset?.id;
   const runPreview = useCallback(async (sql: string) => {
@@ -310,6 +313,12 @@ export default function CardStudio() {
           <span className="mr-3 ml-auto rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
             Read-only — global cards are changed by admins or through a change request.
           </span>
+        )}
+        {editing && (
+          <button onClick={() => setHistoryOpen(true)}
+            className="mr-2 rounded-xl border border-line px-4 py-2.5 font-display text-sm font-semibold text-ink-soft transition hover:border-accent/50 hover:text-ink">
+            History
+          </button>
         )}
         <button onClick={() => setSaveOpen(true)} disabled={!canEdit || !dataset || (!rows.length && chartType !== 'kpi')}
           className="rounded-xl bg-accent px-5 py-2.5 font-display text-sm font-semibold text-white shadow-sm transition enabled:hover:bg-accent-deep disabled:opacity-40">
@@ -588,6 +597,11 @@ export default function CardStudio() {
           )}
         </div>
       </div>
+
+      {historyOpen && id && (
+        <VersionHistory kind="cards" assetId={Number(id)} assetName={name} canEdit={canEdit}
+          onClose={() => setHistoryOpen(false)} onRestored={() => setReloadKey((k) => k + 1)} />
+      )}
 
       {saveOpen && (
         <Modal title={editing ? `Save as v${(versionNo ?? 0) + 1}` : 'Save card to your library'}

@@ -1,4 +1,7 @@
-import type { Card, CardData, Dashboard, DashboardDetail, Dataset, GlobalFilters, Row, Scope, VersionInfo } from './types';
+import type {
+  AssetKind, Card, CardData, Dashboard, DashboardDetail, Dataset, DirectoryEntry, GlobalFilters, Row, Scope, Share,
+  VersionDetail, VersionDiff, VersionInfo,
+} from './types';
 import { getToken, signOut } from './auth';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -53,7 +56,6 @@ export const api = {
 
   cards: (scope?: Scope | 'shared') => request<Card[]>(`/api/cards${scope ? `?scope=${scope}` : ''}`),
   card: (id: number | string) => request<Card>(`/api/cards/${id}`),
-  cardVersions: (id: number) => request<VersionInfo[]>(`/api/cards/${id}/versions`),
   /** Pass the dashboard + pinned version when rendering a dashboard item. */
   cardData: (id: number, filters?: Partial<GlobalFilters>, opts?: { versionId?: number; dashboardId?: number }) =>
     request<CardData>(`/api/cards/${id}/data${filterParams(filters, { version_id: opts?.versionId, dashboard_id: opts?.dashboardId })}`),
@@ -61,11 +63,25 @@ export const api = {
   updateCard: (id: number | string, payload: CardPayload) => request<Card>(`/api/cards/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteCard: (id: number) => request<void>(`/api/cards/${id}`, { method: 'DELETE' }),
 
-  dashboards: () => request<Dashboard[]>('/api/dashboards'),
+  dashboards: (scope?: Scope | 'shared') => request<Dashboard[]>(`/api/dashboards${scope ? `?scope=${scope}` : ''}`),
   dashboard: (id: number | string) => request<DashboardDetail>(`/api/dashboards/${id}`),
   createDashboard: (payload: { name: string; description?: string }) =>
     request<Dashboard>('/api/dashboards', { method: 'POST', body: JSON.stringify(payload) }),
   saveDashboardItems: (id: number | string, items: { item_id?: string; card_id: number; x: number; y: number; w: number; h: number }[]) =>
     request<DashboardDetail>(`/api/dashboards/${id}/items`, { method: 'PUT', body: JSON.stringify({ items }) }),
   deleteDashboard: (id: number) => request<void>(`/api/dashboards/${id}`, { method: 'DELETE' }),
+
+  // Governance — same endpoints for every asset kind
+  versions: (kind: AssetKind, id: number) => request<VersionInfo[]>(`/api/${kind}/${id}/versions`),
+  version: (kind: AssetKind, id: number, no: number) => request<VersionDetail>(`/api/${kind}/${id}/versions/${no}`),
+  diff: (kind: AssetKind, id: number, fromNo: number, toNo?: number) =>
+    request<VersionDiff>(`/api/${kind}/${id}/diff?from_no=${fromNo}${toNo ? `&to_no=${toNo}` : ''}`),
+  restore: (kind: AssetKind, id: number, no: number) =>
+    request<VersionInfo>(`/api/${kind}/${id}/restore/${no}`, { method: 'POST' }),
+  shares: (kind: AssetKind, id: number) => request<Share[]>(`/api/${kind}/${id}/shares`),
+  share: (kind: AssetKind, id: number, userId: number, permission: Share['permission']) =>
+    request<{ user_id: number; permission: string }>(`/api/${kind}/${id}/shares/${userId}`, { method: 'PUT', body: JSON.stringify({ permission }) }),
+  unshare: (kind: AssetKind, id: number, userId: number) =>
+    request<void>(`/api/${kind}/${id}/shares/${userId}`, { method: 'DELETE' }),
+  users: (q = '') => request<DirectoryEntry[]>(`/api/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
 };

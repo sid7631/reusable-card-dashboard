@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.listing import list_visible, owner_name, versions_of
-from app.api.serializers import card_out, version_out
+from app.api.listing import list_visible, owner_name
+from app.api.serializers import card_out
 from app.core.auth import CurrentUser, Session
 from app.execution.cards import run_card
 from app.execution.sql import Filters, validate_sql
@@ -78,12 +78,6 @@ async def delete_card(card_id: int, user: CurrentUser, session: Session) -> Resp
     await archive_asset(session, user, asset, access)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/{card_id}/versions")
-async def card_versions(card_id: int, user: CurrentUser, session: Session) -> list[dict[str, Any]]:
-    asset, _ = await get_asset(session, user, "card", card_id)
-    return [version_out(v, author) for v, author in await versions_of(session, asset.id)]
 
 
 @router.get("/{card_id}/data")

@@ -9,6 +9,8 @@ import SegmentToggles, { segmentLabel, type SegmentSelection } from '../componen
 import PeriodSelect, { DEFAULT_PERIOD, type Period } from '../components/PeriodSelect';
 import type { CardContext } from '../components/CardActions';
 import AssetBadges from '../components/AssetBadges';
+import VersionHistory from '../components/VersionHistory';
+import ShareDialog from '../components/ShareDialog';
 
 const Grid = WidthProvider(RGL);
 
@@ -91,12 +93,14 @@ export default function DashboardPage() {
   const [library, setLibrary] = useState<Card[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dialog, setDialog] = useState<'history' | 'share' | null>(null);
 
-  useEffect(() => {
+  const loadDashboard = useCallback(() => {
     api.dashboard(id!)
-      .then((d) => { setDashboard(d); setItems(d.items); })
+      .then((d) => { setDashboard(d); setItems(d.items); setDirty(false); })
       .catch(() => navigate('/dashboards'));
   }, [id, navigate]);
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   useEffect(() => {
     if (drawerOpen) api.cards().then(setLibrary).catch(console.error);
@@ -167,6 +171,16 @@ export default function DashboardPage() {
           <p className="ml-10 mt-0.5 text-sm text-ink-soft">{dashboard.description}</p>
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setDialog('history')}
+            className="rounded-full border border-line bg-white px-4 py-2 text-xs font-semibold text-ink-soft shadow-sm transition hover:border-accent/50 hover:text-ink">
+            History
+          </button>
+          {dashboard.access === 'owner' && (
+            <button onClick={() => setDialog('share')}
+              className="rounded-full border border-line bg-white px-4 py-2 text-xs font-semibold text-ink-soft shadow-sm transition hover:border-accent/50 hover:text-ink">
+              Share
+            </button>
+          )}
           {dashboard.can_edit ? (
             <div className="flex items-center rounded-full border border-line bg-white p-1 shadow-sm">
               {(['View', 'Edit'] as const).map((mode) => (
@@ -242,6 +256,14 @@ export default function DashboardPage() {
           <p className="font-display font-semibold text-ink">This dashboard is empty</p>
           <p className="mt-1 text-sm text-ink-faint">{dashboard.can_edit ? 'Switch to Edit and add widgets from your card library.' : 'Nothing has been added yet.'}</p>
         </div>
+      )}
+
+      {dialog === 'history' && (
+        <VersionHistory kind="dashboards" assetId={dashboard.id} assetName={dashboard.name} canEdit={dashboard.can_edit}
+          onClose={() => setDialog(null)} onRestored={loadDashboard} />
+      )}
+      {dialog === 'share' && (
+        <ShareDialog kind="dashboards" assetId={dashboard.id} assetName={dashboard.name} onClose={() => setDialog(null)} />
       )}
 
       {/* Add-widget drawer */}

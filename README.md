@@ -53,8 +53,12 @@ Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo da
 - **Pinning.** A dashboard version pins card versions, and a card version pins a data-source version — editing a
   card never silently changes a dashboard. Dashboards flag cards with a newer version ("Update").
 - **Scopes & permissions.** New assets are private to their creator. Global assets are read-only for users and
-  editable by admins. Private assets can be shared with users as `view` or `edit` (API model in place; sharing UI
-  arrives with phase 1).
+  editable by admins. Owners share private assets with specific people as `view` (open + render) or `edit` (also
+  save new versions); revoking is immediate. Viewers of a shared dashboard can render its cards without access to
+  the cards themselves.
+- **History.** Every card and dashboard has a version history with per-version changes, comparison against the
+  current version (structural diff, line diff for SQL), and restore — which appends a new version rather than
+  rewriting history.
 - **Auth.** The SPA gets a signed token from `/auth/token` and sends it as a Bearer token; FastAPI verifies it
   against the JWKS and provisions the user on first request.
 - **Safe queries.** Card SQL is parsed with SQLGlot (exactly one read-only `SELECT`), dashboard filters are bound as
@@ -71,11 +75,16 @@ GET  /api/datasets                 builder metadata per visible data source
 POST /api/query                    studio preview {sql, data_source_id}
 GET  /api/cards?scope=global|private|shared      POST /api/cards
 GET  /api/cards/:id[?version_id]   PUT /api/cards/:id (new version)   DELETE (archive)
-GET  /api/cards/:id/versions
 GET  /api/cards/:id/data?dashboard_id&version_id&segment&sub_segments&from&to
 GET  /api/dashboards               POST /api/dashboards
 GET  /api/dashboards/:id           PUT /api/dashboards/:id/items (new version)   DELETE (archive)
-GET  /api/dashboards/:id/versions
+GET  /api/users?q=                 directory, for sharing
+
+# governance — same for /api/cards, /api/dashboards, /api/data-sources
+GET    /:kind/:id/versions          GET /:kind/:id/versions/:no
+GET    /:kind/:id/diff?from_no&to_no
+POST   /:kind/:id/restore/:no
+GET    /:kind/:id/shares            PUT /:kind/:id/shares/:user_id {permission}   DELETE /:kind/:id/shares/:user_id
 ```
 
 Interactive docs: http://localhost:8010/docs.

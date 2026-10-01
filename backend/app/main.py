@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import cards, dashboards, data_sources, me
+from app.api import cards, dashboards, data_sources, me, users
+from app.api.asset_routes import asset_router
 from app.connectors import postgres
 from app.core.db import engine
 from app.execution.sql import SqlValidationError
@@ -18,7 +19,9 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="SpendBoard API", version="0.2.0", lifespan=lifespan)
 
-for router in (me.router, data_sources.router, cards.router, dashboards.router):
+for router in (me.router, users.router, data_sources.router, cards.router, dashboards.router,
+               asset_router("card", "/api/cards"), asset_router("dashboard", "/api/dashboards"),
+               asset_router("data_source", "/api/data-sources")):
     app.include_router(router)
 
 

@@ -5,15 +5,19 @@ import type { Dashboard } from '../lib/types';
 import Modal from '../components/Modal';
 import AssetBadges from '../components/AssetBadges';
 
+type Tab = 'all' | 'global' | 'private' | 'shared';
+const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global library'], ['private', 'My dashboards'], ['shared', 'Shared with me']];
+
 export default function DashboardsPage() {
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [creating, setCreating] = useState(false);
+  const [tab, setTab] = useState<Tab>('all');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const navigate = useNavigate();
 
-  const load = () => api.dashboards().then(setDashboards).catch(console.error);
-  useEffect(() => { load(); }, []);
+  const load = () => api.dashboards(tab === 'all' ? undefined : tab).then(setDashboards).catch(console.error);
+  useEffect(() => { load(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +44,16 @@ export default function DashboardsPage() {
         >
           + New dashboard
         </button>
+      </div>
+
+      <div className="mb-6 flex gap-1 border-b border-line">
+        {TABS.map(([tid, text]) => (
+          <button key={tid} onClick={() => setTab(tid)}
+            className={`relative px-3.5 py-2.5 font-display text-sm font-semibold transition ${tab === tid ? 'text-accent' : 'text-ink-soft hover:text-ink'}`}>
+            {text}
+            {tab === tid && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent" />}
+          </button>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -72,7 +86,7 @@ export default function DashboardsPage() {
         ))}
         {!dashboards.length && (
           <div className="col-span-full rounded-2xl border border-dashed border-line bg-white/50 p-12 text-center text-sm text-ink-faint">
-            No dashboards yet — create one and start adding cards.
+            {tab === 'shared' ? 'Nothing has been shared with you yet.' : 'No dashboards here yet — create one and start adding cards.'}
           </div>
         )}
       </div>

@@ -226,9 +226,27 @@ async def seed_assets(reset: bool) -> None:
         print(f"Assets: seeded 1 data source, {len(CARDS)} cards, 1 dashboard (global v1).")
 
 
+# Stand-in for directory sync (SCIM) from the IdP, so people can be found for sharing before their
+# first sign-in. Mirrors the demo accounts in apps/web/server/index.mjs.
+DIRECTORY = [
+    ("u-avery", "Avery Admin", "avery@spendboard.local", "admin"),
+    ("u-riley", "Riley Analyst", "riley@spendboard.local", "user"),
+    ("u-jordan", "Jordan Analyst", "jordan@spendboard.local", "user"),
+]
+
+
+async def sync_directory() -> None:
+    async with SessionLocal() as session:
+        existing = set(await session.scalars(select(User.sub)))
+        session.add_all(User(sub=sub, name=name, email=email, role=role)
+                        for sub, name, email, role in DIRECTORY if sub not in existing)
+        await session.commit()
+
+
 async def main(reset: bool) -> None:
     await seed_warehouse(reset)
     await seed_assets(reset)
+    await sync_directory()
     await engine.dispose()
 
 

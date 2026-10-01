@@ -7,9 +7,11 @@ interface Props {
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  /** Extra-wide, for side-by-side content such as version history. */
+  xl?: boolean;
 }
 
-export default function Modal({ title, subtitle, onClose, children, wide = false }: Props) {
+export default function Modal({ title, subtitle, onClose, children, wide = false, xl = false }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -21,7 +23,7 @@ export default function Modal({ title, subtitle, onClose, children, wide = false
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-accent-deep/40 p-4 backdrop-blur-[2px]" onMouseDown={onClose}>
       <div
-        className={`rise-in w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl border border-line bg-white shadow-2xl`}
+        className={`rise-in w-full ${xl ? 'max-w-5xl' : wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl border border-line bg-white shadow-2xl`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-line px-6 py-4">

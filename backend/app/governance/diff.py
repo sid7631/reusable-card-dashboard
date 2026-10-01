@@ -22,7 +22,7 @@ class Change:
     lines: list[str] = field(default_factory=list)  # unified line diff for multi-line text
 
 
-def _list_key(items: list[Any]) -> str | None:
+def list_key(items: list[Any]) -> str | None:
     if not items or not all(isinstance(i, dict) for i in items):
         return None
     return next((k for k in LIST_KEYS if all(k in i for i in items)), None)
@@ -43,7 +43,7 @@ def diff_values(before: Any, after: Any, path: str = "") -> list[Change]:
                 changes += diff_values(before[key], after[key], sub)
         return changes
     if isinstance(before, list) and isinstance(after, list):
-        key = _list_key(before + after)
+        key = list_key(before + after)
         if key:
             old = {i[key]: i for i in before}
             new = {i[key]: i for i in after}

@@ -59,6 +59,17 @@ Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo da
 - **History.** Every card and dashboard has a version history with per-version changes, comparison against the
   current version (structural diff, line diff for SQL), and restore — which appends a new version rather than
   rewriting history.
+- **Publishing (PR-style).** Users never edit global assets in place: **Edit a copy** forks a private copy that
+  remembers which global version it came from. **Propose changes** (copies) or **Request publish** (new assets)
+  opens a change request; private cards and data sources the asset uses are bundled in automatically. Admins review
+  in **Approvals** — per-item diffs against global, live card previews, approve or reject with a comment. Approval
+  publishes in one transaction and rewrites references from private to the new global versions; the requester is
+  recorded as the author.
+- **Merging.** If global moved since the copy was made, changes merge three-way (per JSON path, per dashboard item,
+  per SQL line). Conflicts block approval until the requester runs **Update from global**, choosing a side per
+  conflict — the open request picks up the result automatically.
+- **Card updates on dashboards.** When a pinned card has a newer version, the dashboard shows an "Update" chip and a
+  banner; **Update all** re-pins them as a new dashboard version.
 - **Auth.** The SPA gets a signed token from `/auth/token` and sends it as a Bearer token; FastAPI verifies it
   against the JWKS and provisions the user on first request.
 - **Safe queries.** Card SQL is parsed with SQLGlot (exactly one read-only `SELECT`), dashboard filters are bound as
@@ -80,10 +91,20 @@ GET  /api/dashboards               POST /api/dashboards
 GET  /api/dashboards/:id           PUT /api/dashboards/:id/items (new version)   DELETE (archive)
 GET  /api/users?q=                 directory, for sharing
 
+POST /api/dashboards/:id/apply-updates           re-pin cards to their latest versions
+
+GET  /api/change-requests?status=          admin: queue · user: own      GET /api/change-requests/summary
+POST /api/change-requests {kind, asset_id, title, description}
+GET  /api/change-requests/:id              items, diffs, conflicts, permissions
+POST /api/change-requests/:id/approve|reject|withdraw|update
+GET  /api/change-requests/:id/items/:item/data     preview a proposed card
+
 # governance — same for /api/cards, /api/dashboards, /api/data-sources
 GET    /:kind/:id/versions          GET /:kind/:id/versions/:no
 GET    /:kind/:id/diff?from_no&to_no
 POST   /:kind/:id/restore/:no
+POST   /:kind/:id/fork              private copy of a global asset (reused if one exists)
+GET    /:kind/:id/rebase            preview "update from global"     POST /:kind/:id/rebase {resolutions}
 GET    /:kind/:id/shares            PUT /:kind/:id/shares/:user_id {permission}   DELETE /:kind/:id/shares/:user_id
 ```
 

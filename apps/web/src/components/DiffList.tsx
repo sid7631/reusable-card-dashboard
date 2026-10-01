@@ -26,6 +26,14 @@ function describe(change: SpecChange, labels: Record<string, string>): string {
     ?? change.path.replace(/^spec\./, '').replace(/^config\./, 'Config › ').replaceAll('.', ' › ').replaceAll('_', ' ');
 }
 
+/** Leaf fields of an added/removed object, e.g. a newly published card's spec. */
+function flatten(value: unknown, prefix = ''): [string, unknown][] {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => flatten(v, prefix ? `${prefix}.${k}` : k));
+  }
+  return [[prefix, value]];
+}
+
 function show(value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   if (typeof value === 'string') return value;
@@ -62,6 +70,19 @@ export default function DiffList({ diff }: { diff: VersionDiff }) {
                   </div>
                 ))}
               </pre>
+            ) : !hideValues && c.op !== 'changed' && (c.after ?? c.before) && typeof (c.after ?? c.before) === 'object' && !Array.isArray(c.after ?? c.before) ? (
+              <dl className="mt-2 grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-1 text-xs">
+                {flatten(c.after ?? c.before).filter(([, v]) => v !== '' && v !== null && !(Array.isArray(v) && !v.length)).map(([k, v]) => (
+                  <div key={k} className="contents">
+                    <dt className="font-semibold text-ink-faint">{k.replaceAll('.', ' › ').replaceAll('_', ' ')}</dt>
+                    <dd className="min-w-0">
+                      {typeof v === 'string' && v.includes('\n')
+                        ? <pre className="overflow-auto rounded-md bg-canvas p-2 font-mono text-[11px] text-ink">{v}</pre>
+                        : <span className="break-all font-mono text-ink">{show(v)}</span>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             ) : !hideValues && (
               <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
                 {c.op !== 'added' && <><span className="font-semibold text-ink-faint">Before</span><span className="break-all font-mono text-negative">{show(c.before)}</span></>}

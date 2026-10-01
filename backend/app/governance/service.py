@@ -60,7 +60,7 @@ def parse_spec(kind: str, raw: dict[str, Any]) -> BaseModel:
     try:
         return SPEC_MODELS[kind].model_validate(raw)
     except ValidationError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.errors(include_url=False)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors(include_url=False)) from exc
 
 
 async def _check_dependencies(session: AsyncSession, user: User, asset: Asset, spec: BaseModel) -> list[AssetVersion]:
@@ -69,9 +69,9 @@ async def _check_dependencies(session: AsyncSession, user: User, asset: Asset, s
         version = await session.get(AssetVersion, ref.version_id)
         dep = await session.get(Asset, ref.asset_id)
         if version is None or dep is None or version.asset_id != dep.id or dep.kind != DEPENDENCY_KIND[asset.kind]:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid reference {ref.model_dump()}.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Invalid reference {ref.model_dump()}.")
         if await access_level(session, user, dep) is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No access to referenced {dep.kind} {dep.id}.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"No access to referenced {dep.kind} {dep.id}.")
         if asset.scope == "global" and dep.scope != "global":
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
@@ -157,7 +157,7 @@ async def set_share(session: AsyncSession, user: User, asset: Asset, level: Acce
     if grantee is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
     if grantee.id == user.id:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "You already own this asset.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "You already own this asset.")
     share = await session.get(AssetShare, (asset.id, "user", grantee.id))
     if share is None:
         share = AssetShare(asset_id=asset.id, grantee_type="user", grantee_id=grantee.id, permission=permission,

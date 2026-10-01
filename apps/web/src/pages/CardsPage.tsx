@@ -81,7 +81,15 @@ export default function CardsPage() {
                 <h2 className="truncate font-display text-base font-bold text-ink">{c.name}</h2>
                 <p className="truncate text-xs text-ink-faint">{c.description}</p>
               </div>
-              <AssetBadges asset={c} />
+              <span className="flex shrink-0 flex-col items-end gap-1">
+                <AssetBadges asset={c} />
+                {c.pending_request_id && (
+                  <Link to={`/requests/${c.pending_request_id}`} className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 hover:underline">
+                    In review
+                  </Link>
+                )}
+                {c.fork?.stale && <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Global updated</span>}
+              </span>
             </div>
             <CardPreview card={c} />
             <div className="mt-3 flex items-center justify-between border-t border-line pt-3">

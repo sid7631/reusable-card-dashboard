@@ -9,6 +9,7 @@ from app.api.serializers import card_out
 from app.core.auth import CurrentUser, Session
 from app.execution.cards import run_card
 from app.execution.sql import Filters, validate_sql
+from app.governance.requests import governance_info
 from app.governance.service import archive_asset, create_asset, get_asset, save_version
 from app.governance.specs import CardSpec, ChartType, DashboardSpec, DataSourceSpec
 from app.models import AssetVersion, User
@@ -43,7 +44,9 @@ async def _card_spec(session: AsyncSession, user: User, body: CardIn) -> dict[st
 @router.get("")
 async def list_cards(user: CurrentUser, session: Session,
                      scope: Literal["global", "private", "shared"] | None = None) -> list[dict[str, Any]]:
-    return [card_out(a, v, access, owner) for a, v, owner, access in await list_visible(session, user, "card", scope)]
+    rows = await list_visible(session, user, "card", scope)
+    gov = await governance_info(session, [a for a, *_ in rows])
+    return [card_out(a, v, access, owner, gov[a.id]) for a, v, owner, access in rows]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -59,7 +62,8 @@ async def create_card(body: CardIn, user: CurrentUser, session: Session) -> dict
 async def get_card(card_id: int, user: CurrentUser, session: Session, version_id: int | None = None) -> dict[str, Any]:
     asset, access = await get_asset(session, user, "card", card_id)
     version = await _version(session, asset.id, version_id or asset.head_version_id)
-    return card_out(asset, version, access, await owner_name(session, asset))
+    gov = (await governance_info(session, [asset]))[asset.id]
+    return card_out(asset, version, access, await owner_name(session, asset), gov)
 
 
 @router.put("/{card_id}")
@@ -69,7 +73,8 @@ async def update_card(card_id: int, body: CardIn, user: CurrentUser, session: Se
     version = await save_version(session, user, asset, name=body.name, description=body.description, spec=spec,
                                  change_note=body.change_note)
     await session.commit()
-    return card_out(asset, version, access, await owner_name(session, asset))
+    gov = (await governance_info(session, [asset]))[asset.id]
+    return card_out(asset, version, access, await owner_name(session, asset), gov)
 
 
 @router.delete("/{card_id}", status_code=status.HTTP_204_NO_CONTENT)

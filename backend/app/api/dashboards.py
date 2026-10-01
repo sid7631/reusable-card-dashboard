@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.listing import access_for, list_visible, owner_name
 from app.api.serializers import asset_meta, card_out
 from app.core.auth import CurrentUser, Session
+from app.governance.requests import governance_info
 from app.governance.service import archive_asset, create_asset, get_asset, save_version
 from app.governance.specs import DashboardSpec
 from app.models import Asset, AssetShare, AssetVersion, User
@@ -35,13 +36,18 @@ class LayoutIn(BaseModel):
     change_note: str = ""
 
 
+class ApplyUpdatesIn(BaseModel):
+    # Placements to move to their card's latest version; omitted = all with an update
+    item_ids: list[str] | None = None
+
+
 @router.get("")
 async def list_dashboards(user: CurrentUser, session: Session,
                           scope: Literal["global", "private", "shared"] | None = None) -> list[dict[str, Any]]:
-    return [
-        {**asset_meta(a, v, access, owner), "card_count": len(v.spec.get("items", []))}
-        for a, v, owner, access in await list_visible(session, user, "dashboard", scope)
-    ]
+    rows = await list_visible(session, user, "dashboard", scope)
+    gov = await governance_info(session, [a for a, *_ in rows])
+    return [{**asset_meta(a, v, access, owner, gov[a.id]), "card_count": len(v.spec.get("items", []))}
+            for a, v, owner, access in rows]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -79,6 +85,29 @@ async def save_layout(dashboard_id: int, body: LayoutIn, user: CurrentUser, sess
 
     await save_version(session, user, asset, name=asset.name, description=asset.description,
                        spec={**head.spec, "items": items}, change_note=body.change_note or "Layout updated")
+    await session.commit()
+    return await _detail(session, user, asset, access)
+
+
+@router.post("/{dashboard_id}/apply-updates")
+async def apply_updates(dashboard_id: int, body: ApplyUpdatesIn, user: CurrentUser, session: Session) -> dict[str, Any]:
+    """Re-pin placements to the latest version of their card, as a new dashboard version."""
+    asset, access = await get_asset(session, user, "dashboard", dashboard_id, write=True)
+    head = await session.get(AssetVersion, asset.head_version_id)
+    spec = DashboardSpec.model_validate(head.spec)
+    cards = {c.id: c for c in await session.scalars(select(Asset).where(Asset.id.in_({i.card.asset_id for i in spec.items})))}
+    wanted = set(body.item_ids) if body.item_ids is not None else None
+    updated = []
+    for item in spec.items:
+        card = cards.get(item.card.asset_id)
+        if (card and card.archived_at is None and card.head_version_id != item.card.version_id
+                and (wanted is None or item.item_id in wanted)):
+            item.card.version_id = card.head_version_id
+            updated.append(card.name)
+    if not updated:
+        raise HTTPException(status.HTTP_409_CONFLICT, "No card updates to apply.")
+    await save_version(session, user, asset, name=asset.name, description=asset.description,
+                       spec=spec.model_dump(mode="json"), change_note=f"Updated {', '.join(updated)} to latest")
     await session.commit()
     return await _detail(session, user, asset, access)
 
@@ -122,4 +151,5 @@ async def _detail(session: AsyncSession, user: User, asset: Asset, access: str) 
             "update_available": a.archived_at is None and a.head_version_id != v.id,
         })
 
-    return {**asset_meta(asset, head, access, await owner_name(session, asset)), "items": items}
+    gov = (await governance_info(session, [asset]))[asset.id]
+    return {**asset_meta(asset, head, access, await owner_name(session, asset), gov), "items": items}

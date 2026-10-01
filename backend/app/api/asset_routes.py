@@ -10,12 +10,18 @@ from app.api.listing import versions_of
 from app.api.serializers import version_out
 from app.core.auth import CurrentUser, Session
 from app.governance.diff import diff_versions
+from app.governance.requests import fork_asset, rebase, rebase_preview
 from app.governance.service import get_asset, remove_share, restore_version, set_share
 from app.models import AssetShare, AssetVersion, User
 
 
 class ShareIn(BaseModel):
     permission: Literal["view", "edit"]
+
+
+class RebaseIn(BaseModel):
+    # Conflict path -> which side to keep
+    resolutions: dict[str, Literal["ours", "theirs"]] = {}
 
 
 def asset_router(kind: str, prefix: str) -> APIRouter:
@@ -84,6 +90,29 @@ def asset_router(kind: str, prefix: str) -> APIRouter:
         await remove_share(session, user, asset, level, user_id)
         await session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.post("/{asset_id}/fork")
+    async def fork(asset_id: int, user: CurrentUser, session: Session, response: Response) -> dict[str, Any]:
+        """Edit a global asset: returns the caller's private copy (created on first use)."""
+        asset, _ = await get_asset(session, user, kind, asset_id)
+        copy, created = await fork_asset(session, user, asset)
+        await session.commit()
+        response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return {"id": copy.id, "created": created}
+
+    @router.get("/{asset_id}/rebase")
+    async def rebase_check(asset_id: int, user: CurrentUser, session: Session) -> dict[str, Any]:
+        """Preview 'update from global' for a private copy: incoming changes and conflicts."""
+        asset, _ = await get_asset(session, user, kind, asset_id)
+        preview = await rebase_preview(session, asset)
+        return {k: v for k, v in preview.items() if k not in ("merged", "theirs_version_id")}
+
+    @router.post("/{asset_id}/rebase")
+    async def rebase_apply(asset_id: int, body: RebaseIn, user: CurrentUser, session: Session) -> dict[str, Any]:
+        asset, _ = await get_asset(session, user, kind, asset_id, write=True)
+        version = await rebase(session, user, asset, body.resolutions)
+        await session.commit()
+        return {"version_no": version.version_no if version else None}
 
     return router
 

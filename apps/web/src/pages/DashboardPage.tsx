@@ -11,6 +11,7 @@ import type { CardContext } from '../components/CardActions';
 import AssetBadges from '../components/AssetBadges';
 import VersionHistory from '../components/VersionHistory';
 import ShareDialog from '../components/ShareDialog';
+import GovernanceBar from '../components/GovernanceBar';
 
 const Grid = WidthProvider(RGL);
 
@@ -151,6 +152,16 @@ export default function DashboardPage() {
     }
   };
 
+  const applyUpdates = async () => {
+    try {
+      const updated = await api.applyUpdates(dashboard!.id);
+      setDashboard(updated);
+      setItems(updated.items);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
   if (!dashboard) {
     return <div className="flex h-screen items-center justify-center"><div className="size-6 animate-spin rounded-full border-2 border-line border-t-accent" /></div>;
   }
@@ -169,6 +180,7 @@ export default function DashboardPage() {
             <AssetBadges asset={dashboard} />
           </div>
           <p className="ml-10 mt-0.5 text-sm text-ink-soft">{dashboard.description}</p>
+          <div className="ml-10 mt-2"><GovernanceBar kind="dashboards" asset={dashboard} onChanged={loadDashboard} /></div>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setDialog('history')}
@@ -225,6 +237,18 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {dashboard.can_edit && !dirty && items.some((it) => it.update_available) && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
+          <span>
+            <span className="font-semibold">{items.filter((it) => it.update_available).length} card(s) have newer versions:</span>{' '}
+            {items.filter((it) => it.update_available).map((it) => it.name).join(', ')}. This dashboard keeps showing the pinned versions until you update.
+          </span>
+          <button onClick={applyUpdates} className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 font-semibold text-white transition hover:bg-amber-600">
+            Update all
+          </button>
+        </div>
+      )}
 
       {editMode && (
         <p className="mb-4 rounded-xl border border-accent/30 bg-accent-soft px-4 py-2.5 text-xs font-medium text-accent-deep">

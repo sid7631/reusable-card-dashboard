@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { api } from '../lib/api';
-import type { CardConfig, CardFilter, ChartType, Dataset, Row } from '../lib/types';
+import type { Card, CardConfig, CardFilter, ChartType, Dataset, Row } from '../lib/types';
 import { SCHEMES } from '../lib/format';
 import { buildSql, copilotRespond } from '../lib/builder';
 import ChartRenderer from '../components/ChartRenderer';
 import Modal from '../components/Modal';
 import VersionHistory from '../components/VersionHistory';
+import GovernanceBar from '../components/GovernanceBar';
 
 type Mode = 'builder' | 'sql' | 'copilot';
 
@@ -73,6 +74,7 @@ export default function CardStudio() {
   const [changeNote, setChangeNote] = useState('');
   // Global cards are read-only for non-admins (fork + propose arrives with the approval flow)
   const [canEdit, setCanEdit] = useState(true);
+  const [card, setCard] = useState<Card>();
   const [versionNo, setVersionNo] = useState<number>();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -90,6 +92,7 @@ export default function CardStudio() {
       setName(c.name);
       setDescription(c.description);
       setCanEdit(c.can_edit);
+      setCard(c);
       setVersionNo(c.version_no);
     }).catch(() => navigate('/cards'));
   }, [id, navigate, reloadKey]);
@@ -164,7 +167,8 @@ export default function CardStudio() {
       description,
       chart_type: chartType,
       data_source_id: dataset.id,
-      config,
+      // The editor keeps an empty filter list for convenience; don't store it as a change
+      config: config.filters?.length ? config : (({ filters: _unused, ...rest }) => rest)(config),
       sql_text: sqlText,
       created_via: mode,
       change_note: changeNote,
@@ -307,12 +311,11 @@ export default function CardStudio() {
               Source: <span className="font-semibold">{dataset?.label ?? '…'}</span> · <span className="font-mono">{dataset?.name ?? 'transactions'}</span>
               {dataset ? ` · ${dataset.rowCount.toLocaleString()} rows · Postgres` : ''}
             </p>
+            {card && <div className="mt-2"><GovernanceBar kind="cards" asset={card} onChanged={() => setReloadKey((k) => k + 1)} /></div>}
           </div>
         </div>
-        {!canEdit && (
-          <span className="mr-3 ml-auto rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-            Read-only — global cards are changed by admins or through a change request.
-          </span>
+        {!canEdit && card?.scope !== 'global' && (
+          <span className="mr-3 ml-auto whitespace-nowrap rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">View-only access</span>
         )}
         {editing && (
           <button onClick={() => setHistoryOpen(true)}

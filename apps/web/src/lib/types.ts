@@ -52,6 +52,84 @@ export interface AssetMeta {
   forked_from_asset_id: number | null;
   created_at: string;
   updated_at: string;
+  /** Open change request that includes this asset. */
+  pending_request_id: number | null;
+  /** Set when this is a private copy of a global asset. */
+  fork: ForkInfo | null;
+}
+
+export interface ForkInfo {
+  asset_id: number;
+  name: string;
+  base_version_no: number;
+  global_version_no: number;
+  /** Global has moved on since this copy was made / last updated. */
+  stale: boolean;
+}
+
+export interface Conflict {
+  path: string;
+  base: unknown;
+  ours: unknown;
+  theirs: unknown;
+}
+
+export interface RebasePreview {
+  global_asset_id: number;
+  base_version_no: number;
+  global_version_no: number;
+  stale: boolean;
+  conflicts: Conflict[];
+  incoming: SpecChange[];
+  result: SpecChange[];
+}
+
+export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface ChangeRequestSummary {
+  id: number;
+  status: RequestStatus;
+  title: string;
+  description: string;
+  requested_by: number;
+  requested_by_name: string;
+  reviewed_by: number | null;
+  reviewed_by_name: string | null;
+  review_comment: string;
+  root_asset_id: number;
+  created_at: string;
+  decided_at: string | null;
+  root_kind?: 'card' | 'dashboard' | 'data_source';
+  root_name?: string;
+  item_count?: number;
+}
+
+export interface ChangeRequestItem {
+  id: number;
+  type: 'publish_new' | 'update_existing';
+  kind: 'card' | 'dashboard' | 'data_source';
+  position: number;
+  source_asset_id: number;
+  source_version_no: number;
+  name: string;
+  result_version_id: number | null;
+  target_asset_id?: number;
+  target_name?: string;
+  base_version_no?: number;
+  global_version_no?: number;
+  stale: boolean;
+  unchanged: boolean;
+  changes: SpecChange[];
+  conflicts: Conflict[];
+}
+
+export interface ChangeRequestDetail extends ChangeRequestSummary {
+  items: ChangeRequestItem[];
+  has_conflicts: boolean;
+  can_approve: boolean;
+  can_reject: boolean;
+  can_withdraw: boolean;
+  can_update: boolean;
 }
 
 export interface Card extends AssetMeta {

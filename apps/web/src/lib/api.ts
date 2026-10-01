@@ -1,6 +1,6 @@
 import type {
-  AssetKind, Card, CardData, Dashboard, DashboardDetail, Dataset, DirectoryEntry, GlobalFilters, Row, Scope, Share,
-  VersionDetail, VersionDiff, VersionInfo,
+  AssetKind, Card, CardData, ChangeRequestDetail, ChangeRequestSummary, Dashboard, DashboardDetail, Dataset,
+  DirectoryEntry, GlobalFilters, RebasePreview, RequestStatus, Row, Scope, Share, VersionDetail, VersionDiff, VersionInfo,
 } from './types';
 import { getToken, signOut } from './auth';
 
@@ -29,6 +29,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 function errorMessage(body: unknown): string | undefined {
   const detail = (body as { detail?: unknown }).detail;
   if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object' && 'message' in detail) return String((detail as { message: unknown }).message);
   if (Array.isArray(detail)) return detail.map((d) => d.msg ?? JSON.stringify(d)).join('; ');
   return undefined;
 }
@@ -42,6 +43,13 @@ function filterParams(filters?: Partial<GlobalFilters>, extra?: Record<string, s
   for (const [k, v] of Object.entries(extra ?? {})) if (v !== undefined) params.set(k, String(v));
   const qs = params.toString();
   return qs ? `?${qs}` : '';
+}
+
+/** Lets the sidebar's review badge refresh as soon as a request changes state. */
+export const REQUESTS_CHANGED = 'sb:requests-changed';
+function notifyRequestsChanged<T>(value: T): T {
+  window.dispatchEvent(new Event(REQUESTS_CHANGED));
+  return value;
 }
 
 export type CardPayload = Pick<Card, 'name' | 'description' | 'chart_type' | 'config' | 'sql_text' | 'created_via' | 'data_source_id'> & {
@@ -84,4 +92,23 @@ export const api = {
   unshare: (kind: AssetKind, id: number, userId: number) =>
     request<void>(`/api/${kind}/${id}/shares/${userId}`, { method: 'DELETE' }),
   users: (q = '') => request<DirectoryEntry[]>(`/api/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+
+  // Fork-on-edit and PR-style change requests
+  fork: (kind: AssetKind, id: number) => request<{ id: number; created: boolean }>(`/api/${kind}/${id}/fork`, { method: 'POST' }),
+  rebasePreview: (kind: AssetKind, id: number) => request<RebasePreview>(`/api/${kind}/${id}/rebase`),
+  rebase: (kind: AssetKind, id: number, resolutions: Record<string, 'ours' | 'theirs'>) =>
+    request<{ version_no: number | null }>(`/api/${kind}/${id}/rebase`, { method: 'POST', body: JSON.stringify({ resolutions }) }),
+  applyUpdates: (dashboardId: number, itemIds?: string[]) =>
+    request<DashboardDetail>(`/api/dashboards/${dashboardId}/apply-updates`, { method: 'POST', body: JSON.stringify({ item_ids: itemIds ?? null }) }),
+
+  changeRequests: (status: RequestStatus | 'all' = 'all') => request<ChangeRequestSummary[]>(`/api/change-requests?status=${status}`),
+  changeRequestSummary: () => request<{ pending: number }>('/api/change-requests/summary'),
+  changeRequest: (id: number | string) => request<ChangeRequestDetail>(`/api/change-requests/${id}`),
+  submitChangeRequest: (payload: { kind: AssetKind; asset_id: number; title: string; description?: string }) =>
+    request<ChangeRequestDetail>('/api/change-requests', { method: 'POST', body: JSON.stringify(payload) }).then(notifyRequestsChanged),
+  decideChangeRequest: (id: number, action: 'approve' | 'reject' | 'withdraw' | 'update', comment = '') =>
+    request<ChangeRequestDetail>(`/api/change-requests/${id}/${action}`, { method: 'POST', body: JSON.stringify({ comment }) })
+      .then(notifyRequestsChanged),
+  previewRequestItem: (id: number, itemId: number, filters?: Partial<GlobalFilters>) =>
+    request<CardData & { chart_type: Card['chart_type']; config: Card['config'] }>(`/api/change-requests/${id}/items/${itemId}/data${filterParams(filters)}`),
 };

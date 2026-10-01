@@ -115,6 +115,8 @@ class ChangeRequest(Base):
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     requested_by: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # The asset the user submitted; the other items are its private dependencies (bundle)
+    root_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     review_comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -129,6 +131,8 @@ class ChangeRequestItem(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("change_requests.id"), index=True)
+    # Dependency order within the bundle: data sources, then cards, then dashboards
+    position: Mapped[int] = mapped_column(Integer, default=0)
     type: Mapped[str] = mapped_column(String(24))
     source_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"))
     source_version_id: Mapped[int] = mapped_column(ForeignKey("asset_versions.id"))

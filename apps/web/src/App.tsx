@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import DashboardsPage from './pages/DashboardsPage';
 import DashboardPage from './pages/DashboardPage';
 import CardsPage from './pages/CardsPage';
 import CardStudio from './pages/CardStudio';
 import LoginPage from './pages/LoginPage';
+import RequestsPage from './pages/RequestsPage';
+import RequestDetailPage from './pages/RequestDetailPage';
+import { api, REQUESTS_CHANGED } from './lib/api';
 import { AuthContext, currentUser, signOut, type SessionUser } from './lib/auth';
 import { APP_THEMES, AppThemeContext, applyAppTheme, loadAppTheme } from './lib/theme';
 
-function NavItem({ to, label, icon, collapsed }: { to: string; label: string; icon: string; collapsed: boolean }) {
+function NavItem({ to, label, icon, collapsed, badge }: { to: string; label: string; icon: string; collapsed: boolean; badge?: number }) {
   return (
     <NavLink
       to={to}
@@ -23,6 +26,11 @@ function NavItem({ to, label, icon, collapsed }: { to: string; label: string; ic
         <path d={icon} />
       </svg>
       {!collapsed && label}
+      {Boolean(badge) && (
+        <span className={`rounded-full bg-amber-400 px-1.5 text-[10px] font-bold leading-4 text-accent-deep ${collapsed ? 'absolute ml-6 -mt-5' : 'ml-auto'}`}>
+          {badge}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -50,6 +58,16 @@ export default function App() {
 function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sb-sidebar-collapsed') === '1');
   const [theme, setTheme] = useState(loadAppTheme);
+  const [pending, setPending] = useState(0);
+  const location = useLocation();
+
+  // Refresh the review badge as the user moves around (cheap count query)
+  useEffect(() => {
+    const refresh = () => api.changeRequestSummary().then((s) => setPending(s.pending)).catch(() => undefined);
+    refresh();
+    window.addEventListener(REQUESTS_CHANGED, refresh);
+    return () => window.removeEventListener(REQUESTS_CHANGED, refresh);
+  }, [location.pathname]);
 
   useEffect(() => { applyAppTheme(theme); }, [theme]);
 
@@ -88,6 +106,8 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
         <nav className="space-y-1">
           <NavItem to="/dashboards" label="Dashboards" icon="M2 2h5v7H2zM9 2h5v4H9zM9 8h5v6H9zM2 11h5v3H2z" collapsed={collapsed} />
           <NavItem to="/cards" label="Card Library" icon="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2zM2 6.5h12" collapsed={collapsed} />
+          <NavItem to="/requests" label={user.role === 'admin' ? 'Approvals' : 'My requests'} badge={pending}
+            icon="M3 8.5l3 3 7-7M2 2h12v12H2z" collapsed={collapsed} />
         </nav>
         <div className="mt-auto space-y-3">
           <div className={collapsed ? '' : 'rounded-xl bg-white/5 p-3.5'}>
@@ -138,6 +158,8 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
           <Route path="/cards" element={<CardsPage />} />
           <Route path="/cards/new" element={<CardStudio />} />
           <Route path="/cards/:id/edit" element={<CardStudio />} />
+          <Route path="/requests" element={<RequestsPage />} />
+          <Route path="/requests/:id" element={<RequestDetailPage />} />
         </Routes>
       </main>
     </div>

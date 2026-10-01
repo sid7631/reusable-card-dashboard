@@ -5,8 +5,13 @@ from typing import Any
 from app.models import Asset, AssetVersion
 
 
-def asset_meta(asset: Asset, version: AssetVersion, access: str | None, owner_name: str | None) -> dict[str, Any]:
+def asset_meta(asset: Asset, version: AssetVersion, access: str | None, owner_name: str | None,
+               gov: dict[str, Any] | None = None) -> dict[str, Any]:
+    gov = gov or {}
     return {
+        "pending_request_id": gov.get("pending_request_id"),
+        # Lineage for private copies of global assets: {asset_id, name, base_version_no, global_version_no, stale}
+        "fork": gov.get("fork"),
         "id": asset.id,
         "name": version.name,
         "description": version.description,
@@ -24,10 +29,11 @@ def asset_meta(asset: Asset, version: AssetVersion, access: str | None, owner_na
     }
 
 
-def card_out(asset: Asset, version: AssetVersion, access: str | None, owner_name: str | None) -> dict[str, Any]:
+def card_out(asset: Asset, version: AssetVersion, access: str | None, owner_name: str | None,
+             gov: dict[str, Any] | None = None) -> dict[str, Any]:
     spec = version.spec
     return {
-        **asset_meta(asset, version, access, owner_name),
+        **asset_meta(asset, version, access, owner_name, gov),
         "chart_type": spec["chart_type"],
         "dataset": "transactions",
         "data_source_id": spec["data_source"]["asset_id"],

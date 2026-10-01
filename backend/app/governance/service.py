@@ -88,6 +88,9 @@ async def save_version(
     """Append a new immutable version and move the asset's head to it. Caller commits."""
     parsed = parse_spec(asset.kind, spec)
     deps = await _check_dependencies(session, user, asset, parsed)
+    if asset.kind == "data_source":
+        from app.connectors.policy import check_data_source  # connectors depend on governance specs
+        await check_data_source(session, user, asset, parsed)
 
     # Serialise concurrent saves of the same asset so version numbers stay gapless
     await session.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())

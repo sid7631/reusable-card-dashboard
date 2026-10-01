@@ -16,7 +16,7 @@ from sqlglot.errors import ParseError
 FILTER_TOKEN = "{{filters}}"
 
 _WRITE_NODES = (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.Create, exp.Drop, exp.Alter,
-                exp.Command, exp.Into, exp.TruncateTable, exp.Lock)
+                exp.Command, exp.Into, exp.TruncateTable, exp.Lock, exp.Copy, exp.Attach, exp.Pragma, exp.Set)
 
 
 class SqlValidationError(ValueError):
@@ -54,7 +54,7 @@ class Filters:
         return Filters(self.segment, self.sub_segments, back(self.date_from), back(self.date_to))
 
 
-def validate_sql(sql: str) -> str:
+def validate_sql(sql: str, dialect: str = "postgres") -> str:
     """Return the single read-only statement, normalised; raise SqlValidationError otherwise."""
     if not isinstance(sql, str) or not sql.strip():
         raise SqlValidationError("SQL is required.")
@@ -62,7 +62,7 @@ def validate_sql(sql: str) -> str:
     if re.search(r"\$\d", text):
         raise SqlValidationError("Positional parameters ($1, ...) are reserved for filters.")
     try:
-        statements = [s for s in sqlglot.parse(text.replace(FILTER_TOKEN, ""), dialect="postgres") if s is not None]
+        statements = [s for s in sqlglot.parse(text.replace(FILTER_TOKEN, ""), dialect=dialect) if s is not None]
     except ParseError as exc:
         raise SqlValidationError(f"Could not parse SQL: {exc.errors[0]['description'] if exc.errors else exc}") from exc
     if len(statements) != 1:
@@ -73,9 +73,9 @@ def validate_sql(sql: str) -> str:
     return text
 
 
-def bind_filters(sql: str, filters: Filters) -> tuple[str, list[Any]]:
+def bind_filters(sql: str, filters: Filters, dialect: str = "postgres") -> tuple[str, list[Any]]:
     """Validate `sql` and replace the filters token with bound conditions."""
-    text = validate_sql(sql)
+    text = validate_sql(sql, dialect)
     parts: list[str] = []
     params: list[Any] = []
 

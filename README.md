@@ -16,6 +16,7 @@ Design and roadmap: [docs/architecture.md](docs/architecture.md).
 | Metadata | Postgres 16 |
 | Cache / queue | Redis 7 (wired in from phase 5) |
 | Demo data | Postgres `demo_warehouse` — 60k charge transactions, queried through a read-only role |
+| Extracts | DuckDB (+ PyArrow) for uploaded files and REST data, stored under `backend/storage/` |
 
 ```
 apps/web/            SPA + server/index.mjs (auth + production static/proxy)
@@ -70,6 +71,16 @@ Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo da
   conflict — the open request picks up the result automatically.
 - **Card updates on dashboards.** When a pinned card has a newer version, the dashboard shows an "Update" chip and a
   banner; **Update all** re-pins them as a new dashboard version.
+- **Data sources.** Onboard **Postgres** (queried in place, read-only), **REST APIs** (bearer / API-key / basic auth,
+  page pagination, records path — fetched into a DuckDB extract refreshed after the cache TTL) and **CSV / Excel /
+  JSON** uploads (ingested into DuckDB; each Excel sheet is a table, nested JSON is flattened). Testing a connection
+  proposes a **semantic model** — business labels, descriptions, dimensions, measures, time dimension — that the card
+  builder uses. Sources are versioned and published through the same approval flow as cards.
+- **Credentials & safety.** Passwords/tokens are stored encrypted (`SECRET_KEY`) and referenced as `sec:<id>`; the
+  API never returns them. A stored credential can only be reused against the endpoint it was saved for, so a copy of
+  a published source can't redirect it to another host; only admins may reference server settings (`env:`). DuckDB
+  extracts are opened read-only with external access disabled. Non-admins can't target private network addresses
+  unless `ALLOW_PRIVATE_NETWORK_SOURCES=true` (local dev).
 - **Auth.** The SPA gets a signed token from `/auth/token` and sends it as a Bearer token; FastAPI verifies it
   against the JWKS and provisions the user on first request.
 - **Safe queries.** Card SQL is parsed with SQLGlot (exactly one read-only `SELECT`), dashboard filters are bound as
@@ -90,6 +101,11 @@ GET  /api/cards/:id/data?dashboard_id&version_id&segment&sub_segments&from&to
 GET  /api/dashboards               POST /api/dashboards
 GET  /api/dashboards/:id           PUT /api/dashboards/:id/items (new version)   DELETE (archive)
 GET  /api/users?q=                 directory, for sharing
+
+GET  /api/data-sources[?scope]     POST /api/data-sources {name, spec, credentials?}
+GET  /api/data-sources/:id         PUT /api/data-sources/:id (new version)   DELETE (archive)
+POST /api/data-sources/test        {spec, credentials?, data_source_id?} → tables, sample, suggested model
+POST /api/files                    multipart upload (CSV / XLSX / JSON) → tables, suggested model
 
 POST /api/dashboards/:id/apply-updates           re-pin cards to their latest versions
 

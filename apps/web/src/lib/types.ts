@@ -214,10 +214,74 @@ export interface DirectoryEntry {
 /** URL segment for each versioned asset kind. */
 export type AssetKind = 'cards' | 'dashboards' | 'data-sources';
 
+// ---------------------------------------------------------------- data sources
+export type SourceType = 'postgres' | 'rest' | 'file';
+
+export interface ColumnInfo { name: string; type: string }
+export interface TableInfo { name: string; row_count: number; columns: ColumnInfo[] }
+
+export interface Dimension { name: string; column: string; type: 'string' | 'number' | 'date' | 'boolean'; label: string; description: string }
+export interface Measure { name: string; expr: string; label: string; description: string; format: 'number' | 'currency' | 'percent' }
+export interface SemanticDataset {
+  name: string;
+  label: string;
+  description: string;
+  time_dimension: string | null;
+  dimensions: Dimension[];
+  measures: Measure[];
+}
+export interface SemanticModel { datasets: SemanticDataset[] }
+
+export interface DataSourceSpec {
+  type: SourceType;
+  connection?: { host: string; port: number | string; database: string; user: string; secret_ref?: string | null } | null;
+  rest?: {
+    url: string;
+    headers: Record<string, string>;
+    query: Record<string, string>;
+    auth: { type: 'none' | 'bearer' | 'api_key' | 'basic'; header: string; username: string; secret_ref?: string | null };
+    records_path: string;
+    pagination: { type: 'none' | 'page'; page_param: string; size_param: string | null; page_size: number; max_pages: number };
+    table: string;
+  } | null;
+  file?: { file_id: number } | null;
+  execution: { max_concurrency: number; timeout_s: number; cache_ttl_s: number };
+  model: SemanticModel;
+}
+
+export interface DataSource extends AssetMeta {
+  type: SourceType;
+  spec: DataSourceSpec;
+  has_credentials: boolean;
+}
+
+export interface SourceTestResult {
+  ok: boolean;
+  tables: TableInfo[];
+  sample?: Row[];
+  suggested_model: SemanticModel;
+}
+
+export interface UploadResult {
+  id: number;
+  filename: string;
+  format: 'csv' | 'xlsx' | 'json';
+  size: number;
+  tables: TableInfo[];
+  suggested_model: SemanticModel;
+}
+
 export interface Dataset {
   /** Data-source asset id. */
   id: number;
   version_id: number;
+  type: SourceType;
+  dialect: 'postgres' | 'duckdb';
+  tables: TableInfo[];
+  model: SemanticModel;
+  /** Set when the source could not be reached. */
+  error?: string;
+  /** Primary table. */
   name: string;
   label: string;
   rowCount: number;

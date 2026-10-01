@@ -4,36 +4,53 @@ import type { CardConfig, ChartType } from './types';
  * Generates the SQL stored with a card. The `{{filters}}` token is replaced
  * server-side with dashboard-level segment/period conditions at query time.
  */
-export function buildSql(chartType: ChartType, cfg: CardConfig): string {
+export interface SqlTarget {
+  table: string;
+  dialect: 'postgres' | 'duckdb';
+  /** Time dimension column (time-series axis), from the semantic model. */
+  timeColumn: string | null;
+  /** Whether the table has the columns the current dashboard filters bind to (segment, txn_date). */
+  dashboardFilters: boolean;
+}
+
+export const DEMO_TARGET: SqlTarget = { table: 'transactions', dialect: 'postgres', timeColumn: 'txn_date', dashboardFilters: true };
+
+const ident = (name: string) => (/^[a-z_][a-z0-9_]*$/.test(name) ? name : `"${name.replaceAll('"', '""')}"`);
+
+export function buildSql(chartType: ChartType, cfg: CardConfig, target: SqlTarget = DEMO_TARGET): string {
   const agg = cfg.agg ?? 'SUM';
   const metric = cfg.metric ?? 'amount';
-  const aggExpr = agg === 'COUNT' ? 'COUNT(*)' : `${agg}(${metric})`;
+  const aggExpr = agg === 'COUNT' ? 'COUNT(*)' : `${agg}(${ident(metric)})`;
+  const table = ident(target.table);
+  const filtersToken = target.dashboardFilters ? ' {{filters}}' : '';
 
   const where = (cfg.filters ?? [])
     .filter((f) => f.field && f.value)
-    .map((f) => `AND ${f.field} = '${f.value.replaceAll("'", "''")}'`)
+    .map((f) => `AND ${ident(f.field)} = '${f.value.replaceAll("'", "''")}'`)
     .join(' ');
   const whereSql = where ? ` ${where}` : '';
 
   if (chartType === 'kpi') {
-    return `SELECT ${aggExpr} AS value\nFROM transactions\nWHERE 1=1${whereSql} {{filters}}`;
+    return `SELECT ${aggExpr} AS value\nFROM ${table}\nWHERE 1=1${whereSql}${filtersToken}`;
   }
 
   const dim = cfg.dimension ?? 'industry';
-  let dimExpr = dim;
-  if (dim === 'txn_date' && cfg.timeGrain === 'month') dimExpr = `to_char(txn_date, 'YYYY-MM')`;
-  if (dim === 'vintage') dimExpr = `'Vintage ' || vintage`;
+  const isTime = dim === target.timeColumn;
+  let dimExpr = ident(dim);
+  if (isTime && cfg.timeGrain === 'month') {
+    dimExpr = target.dialect === 'postgres' ? `to_char(${ident(dim)}, 'YYYY-MM')` : `strftime(${ident(dim)}, '%Y-%m')`;
+  }
+  if (dim === 'vintage' && target.table === 'transactions') dimExpr = `'Vintage ' || vintage`;
 
-  const isTime = dim === 'txn_date';
   const orderBy = isTime ? 'label ASC' : 'value DESC';
   const limit = cfg.limit ? `\nLIMIT ${cfg.limit}` : '';
 
   // Bar lists can carry a secondary category column (industry → sub-industry)
   const sub = chartType === 'barlist' && cfg.dimension2 && cfg.dimension2 !== dim ? cfg.dimension2 : undefined;
-  const selectSub = sub ? `, ${sub} AS sublabel` : '';
+  const selectSub = sub ? `, ${ident(sub)} AS sublabel` : '';
   const groupBy = sub ? 'label, sublabel' : 'label';
 
-  return `SELECT ${dimExpr} AS label${selectSub}, ${aggExpr} AS value\nFROM transactions\nWHERE 1=1${whereSql} {{filters}}\nGROUP BY ${groupBy}\nORDER BY ${orderBy}${limit}`;
+  return `SELECT ${dimExpr} AS label${selectSub}, ${aggExpr} AS value\nFROM ${table}\nWHERE 1=1${whereSql}${filtersToken}\nGROUP BY ${groupBy}\nORDER BY ${orderBy}${limit}`;
 }
 
 /** Strip the filters token for ad-hoc preview runs (server also handles it). */

@@ -6,6 +6,8 @@ import CardsPage from './pages/CardsPage';
 import CardStudio from './pages/CardStudio';
 import LoginPage from './pages/LoginPage';
 import RequestsPage from './pages/RequestsPage';
+import DataSourcesPage from './pages/DataSourcesPage';
+import DataSourceEditor from './pages/DataSourceEditor';
 import RequestDetailPage from './pages/RequestDetailPage';
 import { api, REQUESTS_CHANGED } from './lib/api';
 import { AuthContext, currentUser, signOut, type SessionUser } from './lib/auth';
@@ -106,6 +108,7 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
         <nav className="space-y-1">
           <NavItem to="/dashboards" label="Dashboards" icon="M2 2h5v7H2zM9 2h5v4H9zM9 8h5v6H9zM2 11h5v3H2z" collapsed={collapsed} />
           <NavItem to="/cards" label="Card Library" icon="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2zM2 6.5h12" collapsed={collapsed} />
+          <NavItem to="/data-sources" label="Data Sources" icon="M8 2c3.3 0 6 1.1 6 2.5S11.3 7 8 7 2 5.9 2 4.5 4.7 2 8 2zM2 4.5v7C2 12.9 4.7 14 8 14s6-1.1 6-2.5v-7M2 8c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5" collapsed={collapsed} />
           <NavItem to="/requests" label={user.role === 'admin' ? 'Approvals' : 'My requests'} badge={pending}
             icon="M3 8.5l3 3 7-7M2 2h12v12H2z" collapsed={collapsed} />
         </nav>
@@ -158,6 +161,9 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
           <Route path="/cards" element={<CardsPage />} />
           <Route path="/cards/new" element={<CardStudio />} />
           <Route path="/cards/:id/edit" element={<CardStudio />} />
+          <Route path="/data-sources" element={<DataSourcesPage />} />
+          <Route path="/data-sources/new" element={<DataSourceEditor />} />
+          <Route path="/data-sources/:id" element={<DataSourceEditor key="edit" />} />
           <Route path="/requests" element={<RequestsPage />} />
           <Route path="/requests/:id" element={<RequestDetailPage />} />
         </Routes>

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from app.api import cards, change_requests, dashboards, data_sources, me, users
 from app.api.asset_routes import asset_router
 from app.connectors import postgres
+from app.connectors.common import QueryError
 from app.core.db import engine
 from app.execution.sql import SqlValidationError
 
@@ -27,7 +28,7 @@ for router in (me.router, users.router, data_sources.router, cards.router, dashb
 
 # User-facing query problems are 400s with a readable message, not server errors
 @app.exception_handler(SqlValidationError)
-@app.exception_handler(postgres.QueryError)
+@app.exception_handler(QueryError)
 async def query_error(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 

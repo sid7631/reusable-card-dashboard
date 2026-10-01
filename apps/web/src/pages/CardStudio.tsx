@@ -4,7 +4,7 @@ import Editor from '@monaco-editor/react';
 import { api } from '../lib/api';
 import type { Card, CardConfig, CardFilter, ChartType, Dataset, Row } from '../lib/types';
 import { SCHEMES } from '../lib/format';
-import { buildSql, copilotRespond } from '../lib/builder';
+import { buildSql, copilotRespond, DEMO_TARGET, type SqlTarget } from '../lib/builder';
 import ChartRenderer from '../components/ChartRenderer';
 import Modal from '../components/Modal';
 import VersionHistory from '../components/VersionHistory';
@@ -23,17 +23,6 @@ const CHART_TYPES: { id: ChartType; label: string }[] = [
   { id: 'table', label: 'Table' },
 ];
 
-const DIMENSIONS = [
-  { id: 'industry', label: 'Industry' },
-  { id: 'sub_industry', label: 'Sub-industry' },
-  { id: 'product', label: 'Product' },
-  { id: 'merchant', label: 'Merchant' },
-  { id: 'country', label: 'Country' },
-  { id: 'segment', label: 'Segment' },
-  { id: 'sub_segment', label: 'Sub-segment' },
-  { id: 'vintage', label: 'Vintage' },
-  { id: 'txn_date', label: 'Date (time series)' },
-];
 
 interface ChatMsg {
   role: 'user' | 'copilot';
@@ -52,7 +41,22 @@ export default function CardStudio() {
   const [chartType, setChartType] = useState<ChartType>('bar');
   const [config, setConfig] = useState<CardConfig>({ dimension: 'industry', metric: 'amount', agg: 'SUM', filters: [] });
   const [sqlText, setSqlText] = useState(() => buildSql('bar', { dimension: 'industry', metric: 'amount', agg: 'SUM' }));
-  const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [sourceId, setSourceId] = useState<number>();
+  const dataset = datasets.find((d) => d.id === sourceId) ?? null;
+
+  // Builder vocabulary comes from the source's semantic model
+  const primary = dataset?.model.datasets.find((d) => d.name === dataset.name) ?? dataset?.model.datasets[0];
+  const timeColumn = primary?.time_dimension ?? null;
+  const dimensions = primary?.dimensions.length
+    ? primary.dimensions.map((d) => ({ id: d.column, label: d.column === timeColumn ? `${d.label || d.name} (time series)` : d.label || d.name }))
+    : (dataset?.columns ?? []).map((c) => ({ id: c.name, label: c.name }));
+  const numericColumns_ = (dataset?.columns ?? []).filter((c) => /int|numeric|decimal|double|real|float/i.test(c.type)).map((c) => c.name);
+  const columnNames = new Set((dataset?.columns ?? []).map((c) => c.name));
+  const target: SqlTarget = dataset
+    ? { table: dataset.name, dialect: dataset.dialect, timeColumn, dashboardFilters: columnNames.has('segment') && columnNames.has('txn_date') }
+    : DEMO_TARGET;
+  const targetKey = JSON.stringify(target);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [queryMs, setQueryMs] = useState<number | null>(null);
@@ -79,7 +83,34 @@ export default function CardStudio() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => { api.datasets().then((d) => setDataset(d[0])).catch(console.error); }, []);
+  useEffect(() => {
+    api.datasets().then((d) => {
+      setDatasets(d);
+      setSourceId((cur) => cur ?? d.find((x) => !x.error)?.id);
+    }).catch(console.error);
+  }, []);
+
+  const chooseSource = (id: number) => setSourceId(id);
+
+  // Keep builder choices valid for the selected source: anything the source doesn't have falls back
+  // to its first dimension / numeric column (new cards, or switching source)
+  const dimensionIds = dimensions.map((d) => d.id).join('|');
+  const numericKey = numericColumns_.join('|');
+  useEffect(() => {
+    if (!dataset || mode !== 'builder') return;
+    const dims = dimensionIds ? dimensionIds.split('|') : [];
+    const nums = numericKey ? numericKey.split('|') : [];
+    setConfig((c) => {
+      const dimOk = !c.dimension || dims.includes(c.dimension);
+      const metricOk = c.agg === 'COUNT' || (c.metric !== undefined && nums.includes(c.metric));
+      if (dimOk && metricOk) return c;
+      return {
+        ...c,
+        ...(dimOk ? {} : { dimension: dims.find((d) => d !== timeColumn) ?? dims[0], dimension2: undefined, filters: [] }),
+        ...(metricOk ? {} : nums.length ? { metric: nums[0] } : { agg: 'COUNT' as const }),
+      };
+    });
+  }, [dataset, mode, dimensionIds, numericKey, timeColumn]);
 
   // Load existing card when editing
   useEffect(() => {
@@ -92,6 +123,7 @@ export default function CardStudio() {
       setName(c.name);
       setDescription(c.description);
       setCanEdit(c.can_edit);
+      setSourceId(c.data_source_id);
       setCard(c);
       setVersionNo(c.version_no);
     }).catch(() => navigate('/cards'));
@@ -117,11 +149,11 @@ export default function CardStudio() {
   // Builder mode: regenerate SQL + auto-run (debounced) when config changes
   useEffect(() => {
     if (mode !== 'builder') return;
-    const sql = buildSql(chartType, config);
+    const sql = buildSql(chartType, config, JSON.parse(targetKey) as SqlTarget);
     setSqlText(sql);
     const t = setTimeout(() => runPreview(sql), 350);
     return () => clearTimeout(t);
-  }, [mode, chartType, config, runPreview]);
+  }, [mode, chartType, config, runPreview, targetKey]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -149,7 +181,7 @@ export default function CardStudio() {
         setChartType(result.chartType);
         const merged = { metric: 'amount', agg: 'SUM' as const, filters: [], ...result.config };
         setConfig(merged);
-        const sql = buildSql(result.chartType, merged);
+        const sql = buildSql(result.chartType, merged, target);
         setSqlText(sql);
         runPreview(sql);
         if (result.suggestedName && !name) setName(result.suggestedName);
@@ -308,8 +340,15 @@ export default function CardStudio() {
               {versionNo !== undefined && <span className="ml-2 align-middle font-mono text-xs font-medium text-ink-faint">v{versionNo}</span>}
             </h1>
             <p className="text-xs text-ink-soft">
-              Source: <span className="font-semibold">{dataset?.label ?? '…'}</span> · <span className="font-mono">{dataset?.name ?? 'transactions'}</span>
-              {dataset ? ` · ${dataset.rowCount.toLocaleString()} rows · Postgres` : ''}
+              Source:{' '}
+              {!editing && datasets.length > 1 ? (
+                <select value={sourceId ?? ''} onChange={(e) => chooseSource(Number(e.target.value))} aria-label="Data source"
+                  className="rounded-md border border-line bg-white px-1.5 py-0.5 text-xs font-semibold text-ink outline-none focus:border-accent">
+                  {datasets.map((d) => <option key={d.id} value={d.id} disabled={Boolean(d.error)}>{d.label}{d.error ? ' (unavailable)' : ''}</option>)}
+                </select>
+              ) : <span className="font-semibold">{dataset?.label ?? '…'}</span>}
+              {' '}· <span className="font-mono">{dataset?.name ?? '…'}</span>
+              {dataset ? ` · ${dataset.rowCount.toLocaleString()} rows · ${dataset.type === 'postgres' ? 'Postgres' : dataset.type === 'rest' ? 'REST extract' : 'File extract'}` : ''}
             </p>
             {card && <div className="mt-2"><GovernanceBar kind="cards" asset={card} onChanged={() => setReloadKey((k) => k + 1)} /></div>}
           </div>
@@ -367,13 +406,13 @@ export default function CardStudio() {
                 <div>
                   <span className={label}>{chartType === 'bar' ? 'Y-axis — category (horizontal bars)' : chartType === 'barlist' ? 'Category (rows)' : 'X-axis — category'}</span>
                   <select value={config.dimension} onChange={(e) => updateConfig({ dimension: e.target.value })} className={field}>
-                    {DIMENSIONS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                    {dimensions.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
                   </select>
                   {chartType === 'barlist' && (
                     <div className="mt-2 space-y-2">
                       <select value={config.dimension2 ?? ''} onChange={(e) => updateConfig({ dimension2: e.target.value || undefined })} className={field}>
                         <option value="">No sub-category</option>
-                        {DIMENSIONS.filter((d) => d.id !== 'txn_date' && d.id !== config.dimension).map((d) => (
+                        {dimensions.filter((d) => d.id !== timeColumn && d.id !== config.dimension).map((d) => (
                           <option key={d.id} value={d.id}>Sub-category: {d.label}</option>
                         ))}
                       </select>
@@ -385,7 +424,7 @@ export default function CardStudio() {
                       </button>
                     </div>
                   )}
-                  {config.dimension === 'txn_date' && (
+                  {config.dimension === timeColumn && (
                     <div className="mt-2 flex gap-1.5">
                       {(['day', 'month'] as const).map((g) => (
                         <button key={g} onClick={() => updateConfig({ timeGrain: g })}
@@ -409,7 +448,8 @@ export default function CardStudio() {
                     <option value="COUNT">COUNT</option>
                   </select>
                   <select value={config.metric} onChange={(e) => updateConfig({ metric: e.target.value })} className={field} disabled={config.agg === 'COUNT'} aria-label="Metric">
-                    <option value="amount">amount</option>
+                    {numericColumns_.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {!numericColumns_.length && <option value="">(no numeric columns)</option>}
                   </select>
                 </div>
               </div>
@@ -432,7 +472,7 @@ export default function CardStudio() {
                   {(config.filters ?? []).map((f, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <select value={f.field} onChange={(e) => updateFilter(i, { field: e.target.value })} className={`${field} !w-36`}>
-                        {DIMENSIONS.filter((d) => d.id !== 'txn_date').map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                        {dimensions.filter((d) => d.id !== timeColumn).map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
                       </select>
                       <select value={f.value} onChange={(e) => updateFilter(i, { value: e.target.value })} className={field}>
                         <option value="">Choose…</option>

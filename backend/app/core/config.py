@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     query_max_rows: int = 1000
     query_timeout_s: float = 30.0
 
+    # Fernet key for data-source credentials. The default is for local development only —
+    # set SECRET_KEY in every shared environment (generate with cryptography.fernet.Fernet.generate_key()).
+    secret_key: str = "spendboard-dev-only-key-change-me-in-any-shared-env="
+    # Uploaded files, Parquet/DuckDB extracts (local disk now; object storage later)
+    storage_dir: str = "storage"
+    max_upload_mb: int = 50
+    # Whether non-admins may point sources at private/loopback addresses (SSRF guard). On for local dev.
+    allow_private_network_sources: bool = False
+    rest_max_records: int = 100_000
+    rest_max_response_mb: int = 20
+
 
 @lru_cache
 def get_settings() -> Settings:

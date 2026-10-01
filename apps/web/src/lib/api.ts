@@ -1,6 +1,6 @@
 import type {
   AssetKind, Card, CardData, ChangeRequestDetail, ChangeRequestSummary, Dashboard, DashboardDetail, Dataset,
-  DirectoryEntry, GlobalFilters, RebasePreview, RequestStatus, Row, Scope, Share, VersionDetail, VersionDiff, VersionInfo,
+  DataSource, DataSourceSpec, DirectoryEntry, GlobalFilters, RebasePreview, SourceTestResult, UploadResult, RequestStatus, Row, Scope, Share, VersionDetail, VersionDiff, VersionInfo,
 } from './types';
 import { getToken, signOut } from './auth';
 
@@ -9,7 +9,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      // FormData bodies set their own multipart boundary
+      ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
@@ -52,6 +53,15 @@ function notifyRequestsChanged<T>(value: T): T {
   return value;
 }
 
+export interface DataSourcePayload {
+  name: string;
+  description: string;
+  spec: DataSourceSpec;
+  /** Only sent when the user typed a password/token; omitted = keep the stored one. */
+  credentials?: { secret: string } | null;
+  change_note?: string;
+}
+
 export type CardPayload = Pick<Card, 'name' | 'description' | 'chart_type' | 'config' | 'sql_text' | 'created_via' | 'data_source_id'> & {
   change_note?: string;
 };
@@ -92,6 +102,25 @@ export const api = {
   unshare: (kind: AssetKind, id: number, userId: number) =>
     request<void>(`/api/${kind}/${id}/shares/${userId}`, { method: 'DELETE' }),
   users: (q = '') => request<DirectoryEntry[]>(`/api/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+
+  // Data sources
+  dataSources: (scope?: Scope | 'shared') => request<DataSource[]>(`/api/data-sources${scope ? `?scope=${scope}` : ''}`),
+  dataSource: (id: number | string) => request<DataSource>(`/api/data-sources/${id}`),
+  createDataSource: (payload: DataSourcePayload) =>
+    request<DataSource>('/api/data-sources', { method: 'POST', body: JSON.stringify(payload) }),
+  updateDataSource: (id: number, payload: DataSourcePayload) =>
+    request<DataSource>(`/api/data-sources/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteDataSource: (id: number) => request<void>(`/api/data-sources/${id}`, { method: 'DELETE' }),
+  testDataSource: (spec: DataSourceSpec, secret?: string, dataSourceId?: number) =>
+    request<SourceTestResult>('/api/data-sources/test', {
+      method: 'POST',
+      body: JSON.stringify({ spec, credentials: secret ? { secret } : null, data_source_id: dataSourceId ?? null }),
+    }),
+  uploadFile: (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request<UploadResult>('/api/files', { method: 'POST', body });
+  },
 
   // Fork-on-edit and PR-style change requests
   fork: (kind: AssetKind, id: number) => request<{ id: number; created: boolean }>(`/api/${kind}/${id}/fork`, { method: 'POST' }),

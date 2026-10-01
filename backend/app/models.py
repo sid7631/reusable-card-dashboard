@@ -141,6 +141,35 @@ class ChangeRequestItem(Base):
     result_version_id: Mapped[int | None] = mapped_column(ForeignKey("asset_versions.id"))
 
 
+class Secret(Base):
+    """Encrypted credential referenced from data-source specs as `sec:<id>` — never returned by the API."""
+
+    __tablename__ = "secrets"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    ciphertext: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FileObject(Base):
+    """An uploaded CSV/Excel/JSON file and the DuckDB database it was ingested into."""
+
+    __tablename__ = "file_objects"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    format: Mapped[str] = mapped_column(String(16))
+    size: Mapped[int] = mapped_column(BigInteger)
+    checksum: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(512))
+    db_key: Mapped[str] = mapped_column(String(512))
+    # [{name, row_count, columns: [{name, type}]}]
+    tables: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

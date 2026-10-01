@@ -183,8 +183,30 @@ DEMO_SOURCE = {
     "connection": {"host": "env:DEMO_WAREHOUSE_HOST", "port": "env:DEMO_WAREHOUSE_PORT", "database": "demo_warehouse",
                    "user": "warehouse_reader", "secret_ref": "env:DEMO_WAREHOUSE_PASSWORD"},
     "execution": {"max_concurrency": 10, "timeout_s": 30, "cache_ttl_s": 900},
-    "tables": ["transactions"],
-    "dimensions": ["segment", "sub_segment", "industry", "sub_industry", "product", "merchant", "country", "vintage"],
+    "model": {"datasets": [{
+        "name": "transactions",
+        "label": "Charge transactions",
+        "description": "One row per card charge: when, which business segment, merchant, product and amount.",
+        "time_dimension": "txn_date",
+        "dimensions": [
+            {"name": "txn_date", "column": "txn_date", "type": "date", "label": "Transaction date"},
+            {"name": "segment", "column": "segment", "label": "Segment", "description": "Business segment: USCS, GCS or ICS"},
+            {"name": "sub_segment", "column": "sub_segment", "label": "Sub-segment"},
+            {"name": "industry", "column": "industry", "label": "Industry", "description": "Merchant industry (T&E, G&S, B2B)"},
+            {"name": "sub_industry", "column": "sub_industry", "label": "Sub-industry"},
+            {"name": "product", "column": "product", "label": "Card product"},
+            {"name": "merchant", "column": "merchant", "label": "Merchant"},
+            {"name": "country", "column": "country", "label": "Merchant country"},
+            {"name": "vintage", "column": "vintage", "type": "number", "label": "Vintage",
+             "description": "Year the card member was acquired"},
+        ],
+        "measures": [
+            {"name": "total_spend", "expr": "SUM(amount)", "label": "Total spend", "format": "currency",
+             "description": "Charge volume in USD"},
+            {"name": "txn_count", "expr": "COUNT(*)", "label": "Transactions"},
+            {"name": "avg_ticket", "expr": "AVG(amount)", "label": "Average ticket", "format": "currency"},
+        ],
+    }]},
 }
 
 

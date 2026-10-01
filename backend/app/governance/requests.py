@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.governance.diff import diff_versions
 from app.governance.merge import merge3
-from app.governance.service import Access, create_asset, save_version
+from app.governance.service import Access, save_version
 from app.models import Asset, AssetDependency, AssetVersion, AuditEvent, ChangeRequest, ChangeRequestItem, User
 
 
@@ -36,8 +36,14 @@ async def fork_asset(session: AsyncSession, user: User, asset: Asset) -> tuple[A
     if existing is not None:
         return existing, False
     head = await session.get(AssetVersion, asset.head_version_id)
-    fork, _ = await create_asset(session, user, asset.kind, name=head.name, description=head.description, spec=head.spec)
-    fork.forked_from_asset_id, fork.forked_from_version_id = asset.id, head.id
+    # Lineage is recorded before the first version is saved: save-time checks (e.g. reusing a data
+    # source's stored credential against the same endpoint) rely on it
+    fork = Asset(kind=asset.kind, scope="private", owner_id=user.id, name=head.name, description=head.description,
+                 forked_from_asset_id=asset.id, forked_from_version_id=head.id)
+    session.add(fork)
+    await session.flush()
+    await save_version(session, user, fork, name=head.name, description=head.description, spec=head.spec,
+                       change_note=f"Copied from global v{head.version_no}")
     session.add(AuditEvent(actor_id=user.id, action="asset.forked", asset_id=fork.id,
                            payload={"from_asset_id": asset.id, "from_version_no": head.version_no}))
     return fork, True

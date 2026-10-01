@@ -6,6 +6,8 @@ import subprocess
 import time
 import uuid
 
+os.environ["ALLOW_PRIVATE_NETWORK_SOURCES"] = "true"   # tests that check the SSRF guard switch it off
+os.environ["STORAGE_DIR"] = os.environ.get("TEST_STORAGE_DIR", "/tmp/spendboard-test-storage")
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5433/spendboard_test")
 
@@ -41,6 +43,8 @@ def make_token(sub: str, *, role: str = "user", name: str | None = None, exp_in:
 
 @pytest.fixture(scope="session", autouse=True)
 async def database():
+    import shutil
+    shutil.rmtree(os.environ["STORAGE_DIR"], ignore_errors=True)   # extracts from earlier runs
     env = {**os.environ, "ALEMBIC_DATABASE_URL": os.environ["DATABASE_URL"]}
     subprocess.run(["alembic", "downgrade", "base"], check=True, env=env, capture_output=True)
     subprocess.run(["alembic", "upgrade", "head"], check=True, env=env, capture_output=True)
@@ -71,6 +75,9 @@ class Actor:
 
     async def post(self, url, json=None):
         return await self.client.post(url, headers=self.headers, json=json)
+
+    async def upload(self, url, filename: str, content: bytes):
+        return await self.client.post(url, headers=self.headers, files={"file": (filename, content)})
 
     async def put(self, url, json=None):
         return await self.client.put(url, headers=self.headers, json=json)

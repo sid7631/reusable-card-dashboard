@@ -7,6 +7,8 @@ import time
 import uuid
 
 os.environ["ALLOW_PRIVATE_NETWORK_SOURCES"] = "true"   # tests that check the SSRF guard switch it off
+os.environ["EXECUTION_MODE"] = "inline"                  # card jobs run in-process; caching is identical
+os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6380/15")
 os.environ["STORAGE_DIR"] = os.environ.get("TEST_STORAGE_DIR", "/tmp/spendboard-test-storage")
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5433/spendboard_test")
@@ -54,6 +56,8 @@ async def database():
     from app.seed.__main__ import upgrade_demo
     await upgrade_demo()
     auth.jwks = StaticJwks()
+    from app.core.redis import redis
+    await redis().flushdb()  # result cache, locks and stats from earlier runs
     yield
     await engine.dispose()
 

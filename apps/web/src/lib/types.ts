@@ -331,6 +331,10 @@ export type Row = Record<string, unknown>;
 
 export interface CardData {
   rows: Row[];
+  /** When the result was computed (epoch seconds) and whether it is past its freshness window. */
+  as_of?: number;
+  stale?: boolean;
+  cached?: boolean;
   meta: {
     prevValue?: number;
     deltaAbs?: number;

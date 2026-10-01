@@ -14,7 +14,7 @@ Design and roadmap: [docs/architecture.md](docs/architecture.md).
 | Auth (simulated SSO) | Node service in the web deployment — issues RS256 JWTs, publishes JWKS |
 | API | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, SQLGlot |
 | Metadata | Postgres 16 |
-| Cache / queue | Redis 7 (wired in from phase 5) |
+| Cache / queue | Redis 7 (result cache, locks, broker) + Celery workers and beat |
 | Demo data | Postgres `demo_warehouse` — 60k charge transactions, queried through a read-only role |
 | Extracts | DuckDB (+ PyArrow) for uploaded files and REST data, stored under `backend/storage/` |
 
@@ -33,7 +33,7 @@ Prerequisites: Docker, Node 20+, [uv](https://docs.astral.sh/uv/).
 ```bash
 npm run setup     # web deps + Python venv
 cp backend/.env.example backend/.env
-npm run dev       # postgres+redis in Docker, migrate, seed, API on :8010, web on :5173 (auth on :3001)
+npm run dev       # postgres+redis in Docker, migrate, seed, API :8010, Celery worker + beat, web :5173 (auth :3001)
 ```
 
 Open http://localhost:5173 and pick an account: **Avery Admin** (admin) or **Riley / Jordan Analyst** (users).
@@ -44,7 +44,8 @@ Host ports default to Postgres **5433**, Redis **6380**, API **8010** to avoid c
 override with `POSTGRES_PORT`, `REDIS_PORT`, `API_PORT`, `WEB_PORT`.
 
 Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo data and starter assets),
-`npm run infra:down`.
+`npm run infra:down`, `npm run loadtest` (Locust UI). Set `EXECUTION_MODE=inline` to run card queries inside the API
+process without a worker.
 
 ## How it works (current state)
 
@@ -90,6 +91,13 @@ Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo da
   binds filters through its own source's model; filters a source can't apply are reported and the card shows
   "Partly filtered". Cards can expose their own filter dropdowns that override the dashboard for that card, except
   where the dashboard filter is locked.
+- **Execution at scale.** Card results are cached in Redis, keyed by the immutable card version, source version and
+  filters, and shared by every viewer. Concurrent requests for the same view run one query (single-flight); past
+  their TTL, results are served immediately as stale and refreshed in the background. Queries run on Celery workers
+  under a cluster-wide concurrency cap per source endpoint, with a circuit breaker for failing sources. A dashboard
+  loads all cards in **one streamed request** (`POST /render`, server-sent events), each card showing "as of".
+  Celery beat refreshes REST extracts and pre-computes global dashboards' default views. Baseline numbers:
+  [docs/loadtest.md](docs/loadtest.md).
 - **Auth.** The SPA gets a signed token from `/auth/token` and sends it as a Bearer token; FastAPI verifies it
   against the JWKS and provisions the user on first request.
 - **Safe queries.** Card SQL is parsed with SQLGlot (exactly one read-only `SELECT`), dashboard filters are bound as
@@ -116,6 +124,7 @@ GET  /api/data-sources/:id         PUT /api/data-sources/:id (new version)   DEL
 POST /api/data-sources/test        {spec, credentials?, data_source_id?} → tables, sample, suggested model
 POST /api/files                    multipart upload (CSV / XLSX / JSON) → tables, suggested model
 
+POST /api/dashboards/:id/render   {items: [{item_id, filters, date_from, date_to}]} → text/event-stream
 POST /api/dashboards/:id/apply-updates           re-pin cards to their latest versions
 PUT  /api/dashboards/:id/filters                  filter definitions (new version)
 GET  /api/dashboards/:id/filter-options/:filter?selections=   cascading options

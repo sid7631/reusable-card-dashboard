@@ -1,6 +1,10 @@
 from typing import Any, Literal
 
+import asyncio
+import json
+
 from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +15,8 @@ from app.core.auth import CurrentUser, Session
 from app.governance.requests import governance_info
 from app.governance.service import archive_asset, create_asset, get_asset, save_version
 from app.governance.specs import DashboardFilter, DashboardSpec, DataSourceSpec
-from app.semantic.filters import Filters
+from app.execution.jobs import USER_ERRORS, get_result, make_job
+from app.semantic.filters import FilterError, Filters
 from app.semantic.options import card_dimensions, dataset_with, dimension_values
 from app.models import Asset, AssetShare, AssetVersion, User
 
@@ -36,6 +41,18 @@ class LayoutItemIn(BaseModel):
 class LayoutIn(BaseModel):
     items: list[LayoutItemIn]
     change_note: str = ""
+
+
+class RenderItemIn(BaseModel):
+    item_id: str
+    # The card's effective filters (dashboard values with any card-level overrides applied)
+    filters: dict[str, list[str]] = {}
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+class RenderIn(BaseModel):
+    items: list[RenderItemIn] = Field(max_length=200)
 
 
 class FiltersIn(BaseModel):
@@ -117,6 +134,57 @@ async def apply_updates(dashboard_id: int, body: ApplyUpdatesIn, user: CurrentUs
                        spec=spec.model_dump(mode="json"), change_note=f"Updated {', '.join(updated)} to latest")
     await session.commit()
     return await _detail(session, user, asset, access)
+
+
+@router.post("/{dashboard_id}/render")
+async def render(dashboard_id: int, body: RenderIn, user: CurrentUser, session: Session) -> StreamingResponse:
+    """All of a dashboard's cards in one request, streamed (server-sent events) as each completes.
+
+    Cached cards arrive immediately; the rest as workers finish them. Each event carries `as_of` and
+    `stale` so the UI can show data freshness."""
+    asset, _ = await get_asset(session, user, "dashboard", dashboard_id)
+    spec = DashboardSpec.model_validate((await session.get(AssetVersion, asset.head_version_id)).spec)
+    placements = {i.item_id: i for i in spec.items}
+    unknown = [i.item_id for i in body.items if i.item_id not in placements]
+    if unknown:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Not on this dashboard: {', '.join(unknown)}.")
+
+    card_ids = {placements[i.item_id].card.version_id for i in body.items}
+    card_versions = {v.id: v for v in await session.scalars(select(AssetVersion).where(AssetVersion.id.in_(card_ids)))}
+    source_ids = {v.spec["data_source"]["version_id"] for v in card_versions.values()}
+    source_versions = {v.id: v for v in await session.scalars(select(AssetVersion).where(AssetVersion.id.in_(source_ids)))}
+
+    jobs: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    for item in body.items:
+        card_v = card_versions[placements[item.item_id].card.version_id]
+        src_v = source_versions[card_v.spec["data_source"]["version_id"]]
+        try:
+            filters = Filters.parse(None, None, item.date_from, item.date_to, item.filters)
+        except FilterError as exc:
+            errors[item.item_id] = str(exc)
+            continue
+        jobs[item.item_id] = make_job(card_v.id, card_v.spec, src_v.id, src_v.spec, filters)
+
+    async def one(item_id: str, job) -> dict[str, Any]:
+        try:
+            return {"item_id": item_id, **(await get_result(job)).payload()}
+        except USER_ERRORS as exc:
+            return {"item_id": item_id, "error": str(exc)}
+
+    async def stream():
+        for item_id, message in errors.items():
+            yield _sse("card", {"item_id": item_id, "error": message})
+        for done in asyncio.as_completed([one(i, j) for i, j in jobs.items()]):
+            yield _sse("card", await done)
+        yield _sse("done", {"count": len(body.items)})
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _sse(event: str, data: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
 @router.put("/{dashboard_id}/filters")

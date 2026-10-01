@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.listing import list_visible, owner_name
 from app.api.serializers import card_out
 from app.core.auth import CurrentUser, Session
-from app.execution.cards import compile_card, run_card
+from app.execution.cards import compile_card
+from app.execution.jobs import get_result, make_job
 from app.semantic.filters import Filters
 from app.semantic.options import dimension_values
 from app.semantic.query import CompileError, SemanticQuery
@@ -110,10 +111,10 @@ async def card_data(
     filters: str | None = Query(None, description='JSON {dimension: [values]}'),
 ) -> dict[str, Any]:
     version = await _authorised_card_version(session, user, card_id, version_id, dashboard_id)
-    card = CardSpec.model_validate(version.spec)
-    source_version = await session.get(AssetVersion, card.data_source.version_id)
-    source = DataSourceSpec.model_validate(source_version.spec)
-    return await run_card(card, source, Filters.parse(segment, sub_segments, date_from, date_to, filters))
+    source_version = await session.get(AssetVersion, version.spec["data_source"]["version_id"])
+    job = make_job(version.id, version.spec, source_version.id, source_version.spec,
+                   Filters.parse(segment, sub_segments, date_from, date_to, filters))
+    return (await get_result(job)).payload()
 
 
 @router.get("/{card_id}/filter-options")

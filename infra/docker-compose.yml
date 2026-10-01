@@ -34,10 +34,35 @@ services:
       DEMO_WAREHOUSE_PASSWORD: reader
       REDIS_URL: redis://redis:6379/0
       JWKS_URL: http://web:3001/auth/.well-known/jwks.json
+      STORAGE_DIR: /data/storage
+    volumes: [storage:/data/storage]
     ports: ["${API_PORT:-8010}:8010"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+
+  worker:
+    profiles: [full]
+    build: ../backend
+    command: celery -A app.worker.celery_app worker -Q interactive,refresh -c 8 --loglevel=info
+    environment: &worker-env
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/spendboard
+      DEMO_WAREHOUSE_HOST: postgres
+      DEMO_WAREHOUSE_PORT: "5432"
+      DEMO_WAREHOUSE_PASSWORD: reader
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_DIR: /data/storage
+    volumes: [storage:/data/storage]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  beat:
+    profiles: [full]
+    build: ../backend
+    command: celery -A app.worker.celery_app beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    environment: *worker-env
+    depends_on: [redis]
 
   web:
     profiles: [full]
@@ -50,3 +75,5 @@ services:
 
 volumes:
   pgdata:
+  # Uploaded files and DuckDB extracts, shared by the API and workers
+  storage:

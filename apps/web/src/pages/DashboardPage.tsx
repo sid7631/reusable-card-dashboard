@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createRenderBatcher, RenderContext } from '../lib/render';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout';
 import { api } from '../lib/api';
@@ -35,6 +36,8 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
   const [data, setData] = useState<CardData>({ rows: [], meta: {} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const batcher = useContext(RenderContext);
+  const [recheck, setRecheck] = useState(0);
 
   // Card-level overrides (absent = follow the dashboard); reset whenever the dashboard filters change
   const [dimOverrides, setDimOverrides] = useState<Record<string, string[]>>({});
@@ -57,16 +60,30 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
   const effective: AppliedFilters = { dims: effDims, from: effPeriod?.from, to: effPeriod?.to };
   const effectiveKey = JSON.stringify(effective);
 
+  useEffect(() => { setRecheck(0); }, [effectiveKey]);
+
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    if (recheck === 0) setLoading(true);
     setError(undefined);
-    api.cardData(card.id, JSON.parse(effectiveKey) as AppliedFilters, { versionId: card.card_version_id, dashboardId })
-      .then((d) => alive && setData(d))
+    const filters = JSON.parse(effectiveKey) as AppliedFilters;
+    // Saved placements render through the dashboard's single streamed request; cards just added in
+    // edit mode (not saved yet) load on their own
+    const request = batcher && card.item_id
+      ? batcher.load(card.item_id, filters)
+      : api.cardData(card.id, filters, { versionId: card.card_version_id, dashboardId });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    request
+      .then((d) => {
+        if (!alive) return;
+        setData(d);
+        // A stale result is being refreshed in the background — look again shortly
+        if (d.stale && recheck < 3) timer = setTimeout(() => setRecheck((n) => n + 1), 2500);
+      })
       .catch((e) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [card.id, card.card_version_id, dashboardId, effectiveKey]);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [card.id, card.item_id, card.card_version_id, dashboardId, effectiveKey, batcher, recheck]);
 
   const setOverride = (dim: string, values: string[]) => setDimOverrides((o) => {
     const next = { ...o, [dim]: values };
@@ -112,6 +129,7 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
 
   return (
     <CardFrame card={card} rows={data.rows} controls={controls} notices={notices} context={context} editMode={editMode}
+      asOf={data.as_of} stale={data.stale}
       onRemove={onRemove} loading={loading} error={error}>
       <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} scheme={card.config.scheme} />
     </CardFrame>
@@ -132,6 +150,7 @@ export default function DashboardPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState<'history' | 'share' | null>(null);
+  const batcher = useMemo(() => (id ? createRenderBatcher(Number(id)) : null), [id]);
 
   // Filter state starts from the dashboard's defaults
   const resetFilters = (d: DashboardDetail) => {
@@ -306,6 +325,7 @@ export default function DashboardPage() {
         </p>
       )}
 
+      <RenderContext.Provider value={batcher}>
       <Grid
         layout={layout}
         cols={12}
@@ -323,6 +343,7 @@ export default function DashboardPage() {
           </div>
         ))}
       </Grid>
+      </RenderContext.Provider>
 
       {!items.length && (
         <div className="rounded-2xl border border-dashed border-line bg-white/50 p-16 text-center">

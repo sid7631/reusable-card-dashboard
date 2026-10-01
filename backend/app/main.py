@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import cards, change_requests, dashboards, data_sources, me, semantic, users
+from app.api import cards, change_requests, dashboards, data_sources, me, ops, semantic, users
+from app.core import redis as redis_client
 from app.api.asset_routes import asset_router
 from app.connectors import postgres
 from app.connectors.common import QueryError
@@ -17,13 +18,14 @@ from app.semantic.query import CompileError
 async def lifespan(_app: FastAPI):
     yield
     await postgres.close_pools()
+    await redis_client.close()
     await engine.dispose()
 
 
 app = FastAPI(title="SpendBoard API", version="0.2.0", lifespan=lifespan)
 
 for router in (me.router, users.router, data_sources.router, cards.router, dashboards.router, change_requests.router,
-               semantic.router,
+               semantic.router, ops.router,
                asset_router("card", "/api/cards"), asset_router("dashboard", "/api/dashboards"),
                asset_router("data_source", "/api/data-sources")):
     app.include_router(router)

@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/spendboard"
+    # Per process. API processes × (pool + overflow) must stay under Postgres max_connections.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
     redis_url: str = "redis://localhost:6380/0"
 
     # Simulated SSO: the web deployment's auth service signs RS256 tokens and publishes its JWKS
@@ -33,6 +36,17 @@ class Settings(BaseSettings):
     allow_private_network_sources: bool = False
     rest_max_records: int = 100_000
     rest_max_response_mb: int = 20
+
+    # Execution: "celery" runs card queries on workers; "inline" runs them in the API process
+    # (tests, single-process demos). Caching and single-flight behave the same either way.
+    execution_mode: str = "celery"
+    # Cached results are served past their TTL (marked stale, refreshed in the background) for this long
+    stale_grace_s: int = 6 * 3600
+    # How long a request waits for a result being computed elsewhere
+    result_wait_s: float = 60
+    # Circuit breaker per source endpoint: this many failures within a minute opens it for `breaker_open_s`
+    breaker_failures: int = 5
+    breaker_open_s: int = 30
 
 
 @lru_cache

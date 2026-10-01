@@ -15,6 +15,9 @@ interface Props {
   onRemove?: () => void;
   loading?: boolean;
   error?: string;
+  /** When the shown result was computed (epoch seconds), and whether it is being refreshed. */
+  asOf?: number;
+  stale?: boolean;
   /** Small attention chips in the header, e.g. "update available", "partly filtered". */
   notices?: { label: string; title: string }[];
 }
@@ -25,7 +28,7 @@ const VIA_BADGE: Record<string, string> = {
   copilot: 'Copilot',
 };
 
-export default function CardFrame({ card, rows, children, controls, context = DEFAULT_CONTEXT, editMode = false, onRemove, loading, error, notices = [] }: Props) {
+export default function CardFrame({ card, rows, children, controls, context = DEFAULT_CONTEXT, editMode = false, onRemove, loading, error, notices = [], asOf, stale }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modal, setModal] = useState<'export' | 'sql' | 'share' | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -96,6 +99,13 @@ export default function CardFrame({ card, rows, children, controls, context = DE
           children
         )}
       </div>
+
+      {asOf && !loading && !error && (
+        <p className={`-mt-2 px-4 pb-1.5 text-right text-[9px] ${stale ? 'text-amber-700' : 'text-ink-faint'}`}
+          title={new Date(asOf * 1000).toLocaleString()}>
+          {stale ? 'Refreshing · ' : ''}as of {new Date(asOf * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </p>
+      )}
 
       {modal === 'export' && <ExportModal card={card} rows={rows} context={context} onClose={() => setModal(null)} />}
       {modal === 'sql' && <SqlModal card={card} context={context} onClose={() => setModal(null)} />}

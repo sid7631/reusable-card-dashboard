@@ -29,8 +29,15 @@ def safe_table_name(raw: str, fallback: str = "data") -> str:
 
 def _locked_connection(db_path: Path) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(str(db_path), read_only=True)
-    con.execute("SET enable_external_access = false")
-    con.execute("SET lock_configuration = true")
+    try:
+        con.execute("SET enable_external_access = false")
+        con.execute("SET lock_configuration = true")
+    except duckdb.InvalidInputException:
+        # DuckDB shares one database instance per file within a process: a concurrent query already
+        # locked it. Confirm the lockdown is in place rather than trusting the error.
+        if con.execute("SELECT current_setting('enable_external_access')").fetchone()[0] is not False:
+            con.close()
+            raise
     return con
 
 

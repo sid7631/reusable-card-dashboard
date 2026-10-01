@@ -20,6 +20,7 @@ dependencies = [
   "openpyxl>=3.1.5",
   "cryptography>=50.0.2",
   "python-multipart>=0.0.32",
+  "celery[redis]>=5.4",
 ]
 
 [dependency-groups]
@@ -27,6 +28,7 @@ dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.24",
   "cryptography>=43",
+  "locust>=2.32",
 ]
 
 [tool.pytest.ini_options]

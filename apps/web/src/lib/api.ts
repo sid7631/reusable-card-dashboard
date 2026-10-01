@@ -54,6 +54,24 @@ function notifyRequestsChanged<T>(value: T): T {
   return value;
 }
 
+export interface AssistantConfig { mode: 'offline' | 'llm'; provider: string; model: string | null }
+export interface AssistantAsk {
+  question: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+  /** Cards as shown, with their effective filters (same shape as /render). */
+  items: { item_id: string; filters: Record<string, string[]>; date_from?: string; date_to?: string }[];
+  filter_summary: string;
+}
+export interface AssistantAction { label: string; filter_id: string; values: string[] }
+export interface AssistantReply {
+  answer: string;
+  sources: { item_id: string; name: string }[];
+  actions: AssistantAction[];
+  mode: 'offline' | 'llm';
+  model: string | null;
+  tool_calls: { tool: string; args: Record<string, unknown> }[];
+}
+
 export interface DataSourcePayload {
   name: string;
   description: string;
@@ -118,6 +136,11 @@ export const api = {
   cardFilterOptions: (cardId: number, dimension: string, narrowing: Record<string, string[]>, opts?: { versionId?: number; dashboardId?: number }) =>
     request<{ values: string[] }>(`/api/cards/${cardId}/filter-options${filterParams({ dims: narrowing }, {
       dimension, version_id: opts?.versionId, dashboard_id: opts?.dashboardId })}`),
+
+  // Dashboard assistant
+  assistantConfig: () => request<AssistantConfig>('/api/assistant/config'),
+  askAssistant: (dashboardId: number, body: AssistantAsk) =>
+    request<AssistantReply>(`/api/dashboards/${dashboardId}/assistant`, { method: 'POST', body: JSON.stringify(body) }),
 
   // Semantic layer
   /** SQL for display/editing: static filters inlined, `{{filters}}` where dashboard filters bind. */

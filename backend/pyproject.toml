@@ -21,6 +21,7 @@ dependencies = [
   "cryptography>=50.0.2",
   "python-multipart>=0.0.32",
   "celery[redis]>=5.4",
+  "openai>=1.60",
 ]
 
 [dependency-groups]

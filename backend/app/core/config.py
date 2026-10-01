@@ -48,6 +48,21 @@ class Settings(BaseSettings):
     breaker_failures: int = 5
     breaker_open_s: int = 30
 
+    # Dashboard assistant — OpenAI chat-completions format.
+    #   offline : no model calls; answers from the figures on screen (rule-based)
+    #   openai  : any OpenAI-compatible endpoint — OpenAI, or Ollama at http://localhost:11434/v1
+    #   azure   : Azure OpenAI (LLM_MODEL is the deployment name)
+    llm_provider: str = "offline"
+    llm_model: str = ""
+    llm_base_url: str | None = None
+    llm_api_key: str = ""
+    azure_openai_endpoint: str = ""
+    azure_openai_api_version: str = "2024-10-21"
+    llm_temperature: float = 0.1
+    llm_timeout_s: float = 60
+    llm_max_tool_rounds: int = 6
+    assistant_requests_per_minute: int = 20
+
 
 @lru_cache
 def get_settings() -> Settings:

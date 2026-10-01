@@ -98,6 +98,15 @@ process without a worker.
   loads all cards in **one streamed request** (`POST /render`, server-sent events), each card showing "as of".
   Celery beat refreshes REST extracts and pre-computes global dashboards' default views. Baseline numbers:
   [docs/loadtest.md](docs/loadtest.md).
+- **Dashboard assistant.** A floating chat button on every dashboard answers questions about the cards as they are
+  shown (same filters, same cached results), cites the cards it used ("From …" — click to jump to the card), and
+  offers filter buttons ("Filter to GCS →"). With a model configured it uses the **OpenAI chat-completions format**
+  — Ollama locally (`LLM_PROVIDER=openai`, `LLM_BASE_URL=http://localhost:11434/v1`) or Azure OpenAI
+  (`LLM_PROVIDER=azure`) — with server-side tools: `query_data` (semantic queries, only against the dashboard's own
+  sources, ≤50 rows), `list_dimension_values`, `get_card` (re-run a card with other filters, cached) and
+  `suggest_filter` (a button the user may click). The model gets the semantic catalog and the on-screen
+  aggregates, never raw source data. Without a model (`LLM_PROVIDER=offline`, the default) it answers common
+  questions — totals, leaders, growth, concentration, overview — from the figures on screen. See `backend/.env.example`.
 - **Auth.** The SPA gets a signed token from `/auth/token` and sends it as a Bearer token; FastAPI verifies it
   against the JWKS and provisions the user on first request.
 - **Safe queries.** Card SQL is parsed with SQLGlot (exactly one read-only `SELECT`), dashboard filters are bound as
@@ -140,6 +149,10 @@ POST /api/change-requests {kind, asset_id, title, description}
 GET  /api/change-requests/:id              items, diffs, conflicts, permissions
 POST /api/change-requests/:id/approve|reject|withdraw|update
 GET  /api/change-requests/:id/items/:item/data     preview a proposed card
+
+GET  /api/assistant/config                        offline | llm, model
+POST /api/dashboards/:id/assistant  {question, history, items (as shown), filter_summary}
+                                    → answer, sources (cards cited), actions (filter buttons), tool_calls
 
 # governance — same for /api/cards, /api/dashboards, /api/data-sources
 GET    /:kind/:id/versions          GET /:kind/:id/versions/:no

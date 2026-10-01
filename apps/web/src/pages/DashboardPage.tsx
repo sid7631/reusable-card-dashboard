@@ -4,13 +4,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout';
 import { api } from '../lib/api';
 import type { AppliedFilters, Card, CardData, ChartType, DashboardDetail, DashboardFilterDef, DashboardItem } from '../lib/types';
-import { cardControlDims, dimensionLabel, initialValues, summarize, toApplied, type FilterValues } from '../lib/filters';
+import { cardControlDims, dimensionLabel, initialValues, setFilter, summarize, toApplied, type FilterValues } from '../lib/filters';
 import ChartRenderer from '../components/ChartRenderer';
 import CardFrame from '../components/CardFrame';
 import PeriodSelect, { periodFromPreset, type Period } from '../components/PeriodSelect';
 import FilterSelect from '../components/FilterSelect';
 import FilterBar from '../components/FilterBar';
 import DashboardFilterEditor from '../components/DashboardFilterEditor';
+import AssistantWidget from '../components/AssistantWidget';
 import type { CardContext } from '../components/CardActions';
 import AssetBadges from '../components/AssetBadges';
 import VersionHistory from '../components/VersionHistory';
@@ -231,6 +232,11 @@ export default function DashboardPage() {
 
   const onDashboard = new Set(items.map((it) => it.id));
   const applied = toApplied(dashboard.filters, filterValues, period);
+  const filterSummary = [
+    ...dashboard.filters.filter((f) => f.kind !== 'period' && filterValues[f.id]?.length)
+      .map((f) => `${f.label || f.dimension}: ${filterValues[f.id].join(', ')}`),
+    period?.label ?? '',
+  ].filter(Boolean).join(' · ') || 'All data';
 
   return (
     <div className="px-8 py-7">
@@ -338,7 +344,7 @@ export default function DashboardPage() {
         onLayoutChange={onLayoutChange}
       >
         {items.map((it) => (
-          <div key={String(it.id)}>
+          <div key={String(it.id)} id={it.item_id ? `card-${it.item_id}` : undefined}>
             <DashboardCard card={it} dashboardId={dashboard.id} defs={dashboard.filters} applied={applied} period={period} editMode={editMode} onRemove={() => removeCard(it.id)} />
           </div>
         ))}
@@ -351,6 +357,10 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-ink-faint">{dashboard.can_edit ? 'Switch to Edit and add widgets from your card library.' : 'Nothing has been added yet.'}</p>
         </div>
       )}
+
+      <AssistantWidget dashboardId={dashboard.id} dashboardName={dashboard.name} items={items} applied={applied}
+        filterSummary={filterSummary}
+        onApplyFilter={(filterId, values) => setFilterValues((v) => setFilter(dashboard.filters, v, filterId, values))} />
 
       {filtersOpen && (
         <DashboardFilterEditor dashboard={dashboard} onClose={() => setFiltersOpen(false)}

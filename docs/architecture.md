@@ -380,7 +380,7 @@ API replicas are stateless; workers scale per queue. Postgres holds only metadat
 
 ---
 
-## 9. LLM analytics readiness (future phase, designed in now)
+## 9. LLM analytics — dashboard assistant
 
 The LLM never receives raw data. It receives **context** and **tools**, and every tool runs through
 the same governed query engine with the asking user's permissions.
@@ -400,6 +400,15 @@ effective filters, and its already-aggregated result (top-N rows, capped) — pl
 
 Because the semantic layer, cache and execution engine are shared, LLM queries benefit from
 extracts/pre-aggregations and can't bypass access control or run unbounded SQL.
+
+**As built (phase 6):** a floating assistant on each dashboard. The model is called in the **OpenAI
+chat-completions format** (function calling) so the same code serves Ollama in development and Azure
+OpenAI in production; `LLM_PROVIDER=offline` answers common questions without a model. Tools are
+`query_data`, `list_dimension_values`, `get_card` and `suggest_filter` (proposes a filter button; never
+applies it). Tools are scoped to the sources the dashboard's cards use, run with the asking user's
+access, and return ≤50 aggregated rows. Card names, descriptions and tool results are presented to the
+model as data, and the system prompt tells it to treat instructions inside them as text. Each question
+is rate-limited per user and audited (question length and tools used; answers aren't stored).
 
 ---
 

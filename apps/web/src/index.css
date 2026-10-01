@@ -62,3 +62,9 @@ body {
 }
 .copilot-dot:nth-child(2) { animation-delay: 0.15s; }
 .copilot-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* Card cited by the assistant */
+.assistant-flash > * {
+  box-shadow: 0 0 0 3px var(--color-accent), 0 8px 24px rgba(10, 28, 63, 0.15);
+  transition: box-shadow 0.3s;
+}

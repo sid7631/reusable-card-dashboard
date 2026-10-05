@@ -44,7 +44,8 @@ Host ports default to Postgres **5433**, Redis **6380**, API **8010** to avoid c
 override with `POSTGRES_PORT`, `REDIS_PORT`, `API_PORT`, `WEB_PORT`.
 
 Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo data and starter assets),
-`npm run infra:down`, `npm run loadtest` (Locust UI). Set `EXECUTION_MODE=inline` to run card queries inside the API
+`npm run infra:down`, `npm run loadtest` (Locust UI), `npm run infra:bigquery` (local BigQuery emulator for
+development and the BigQuery tests; set `BIGQUERY_EMULATOR_HOST=http://localhost:9050` to point BigQuery sources at it). Set `EXECUTION_MODE=inline` to run card queries inside the API
 process without a worker.
 
 ## How it works (current state)
@@ -72,7 +73,9 @@ process without a worker.
   conflict — the open request picks up the result automatically.
 - **Card updates on dashboards.** When a pinned card has a newer version, the dashboard shows an "Update" chip and a
   banner; **Update all** re-pins them as a new dashboard version.
-- **Data sources.** Onboard **Postgres** (queried in place, read-only), **REST APIs** (bearer / API-key / basic auth,
+- **Data sources.** Onboard **Postgres** (queried in place, read-only), **BigQuery** (queried in place with typed
+  parameters, a per-query bytes-billed cap, job timeouts; service-account key or — admins only — the server's Google
+  identity), **REST APIs** (bearer / API-key / basic auth,
   page pagination, records path — fetched into a DuckDB extract refreshed after the cache TTL) and **CSV / Excel /
   JSON** uploads (ingested into DuckDB; each Excel sheet is a table, nested JSON is flattened). Testing a connection
   proposes a **semantic model** — business labels, descriptions, dimensions, measures, time dimension — that the card
@@ -83,8 +86,9 @@ process without a worker.
   extracts are opened read-only with external access disabled. Non-admins can't target private network addresses
   unless `ALLOW_PRIVATE_NETWORK_SOURCES=true` (local dev).
 - **Semantic queries.** Builder cards are stored as measures × dimensions in business terms (model measures or
-  ad-hoc aggregates, time grains day → year, static filters, sort, limit) and compiled server-side to Postgres or
-  DuckDB SQL. Model measure expressions must be plain aggregates. The same `/api/semantic/*` endpoints are the shape
+  ad-hoc aggregates, time grains day → year, static filters, sort, limit) and compiled server-side to Postgres,
+  DuckDB or BigQuery SQL — quoting, parameters (`$1` vs `@p1`), list filters (`= ANY` vs `IN UNNEST`), date functions
+  and DATE/DATETIME/TIMESTAMP windows all come from one dialect module (`backend/app/semantic/dialects.py`). Model measure expressions must be plain aggregates. The same `/api/semantic/*` endpoints are the shape
   future LLM tools will call. Raw-SQL cards keep working with a `{{filters}}` token.
 - **Filters.** Dashboards define their filters: a dimension, single/multi select, a parent (options cascade from the
   parent's selection), a lock, and a default — plus a period filter bound to each source's time dimension. Every card

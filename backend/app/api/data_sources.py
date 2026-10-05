@@ -17,7 +17,9 @@ from app.core import secrets
 from app.core.auth import CurrentUser, Session
 from app.core.config import get_settings
 from app.execution.cards import run_sql
+from app.semantic.dialects import TEMPORAL_TYPES, quote_table
 from app.semantic.filters import Filters
+from app.semantic.options import dimension_values
 from app.governance.requests import governance_info
 from app.governance.service import archive_asset, create_asset, get_asset, parse_spec, save_version
 from app.governance.specs import DataSourceSpec
@@ -50,6 +52,8 @@ class TestIn(BaseModel):
 def _set_secret(spec: dict[str, Any], ref: str | None) -> None:
     if spec.get("type") == "postgres" and spec.get("connection") is not None:
         spec["connection"]["secret_ref"] = ref
+    elif spec.get("type") == "bigquery" and spec.get("bigquery") is not None:
+        spec["bigquery"]["secret_ref"] = ref
     elif spec.get("type") == "rest" and spec.get("rest") is not None:
         spec["rest"].setdefault("auth", {})["secret_ref"] = ref
 
@@ -91,7 +95,7 @@ async def get_data_source(source_id: int, user: CurrentUser, session: Session) -
 
 async def _prepare_spec(session: AsyncSession, user: User, body: DataSourceIn, head: DataSourceSpec | None) -> dict[str, Any]:
     raw = dict(body.spec)
-    for section in ("connection", "rest"):
+    for section in ("connection", "rest", "bigquery"):
         if raw.get(section) is not None:
             raw[section] = {**raw[section]}
             if section == "rest" and raw[section].get("auth") is not None:
@@ -138,7 +142,7 @@ async def delete_data_source(source_id: int, user: CurrentUser, session: Session
 async def test_data_source(body: TestIn, user: CurrentUser, session: Session) -> dict[str, Any]:
     """Try a connection before saving. Returns tables, sample rows (REST) and a suggested semantic model."""
     raw = dict(body.spec)
-    for section in ("connection", "rest"):
+    for section in ("connection", "rest", "bigquery"):
         if raw.get(section) is not None:
             raw[section] = {**raw[section], **({"auth": {**raw[section].get("auth", {})}} if section == "rest" else {})}
     _set_secret(raw, None)
@@ -153,6 +157,9 @@ async def test_data_source(body: TestIn, user: CurrentUser, session: Session) ->
         fields = [*(spec.connection.model_dump().values() if spec.connection else [])]
         if any(isinstance(v, str) and v.startswith("env:") for v in fields):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Only admins can reference server settings (env:).")
+        if spec.bigquery and spec.bigquery.auth == "adc":
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                "Only admins can use the server's own Google identity — upload a service-account key.")
     if spec.file:
         file = await session.get(FileObject, spec.file.file_id)
         if file is None or (file.uploaded_by != user.id and not is_admin):
@@ -209,21 +216,20 @@ async def _catalog(version: AssetVersion) -> dict[str, Any]:
         return hit[1]
     spec = DataSourceSpec.model_validate(version.spec)
     tables = await connectors.introspect(spec, version_id=version.id)
-    if spec.type == "postgres" and spec.model.datasets:
+    if spec.type in ("postgres", "bigquery") and spec.model.datasets:
         modelled = {d.name for d in spec.model.datasets}
         tables = [t for t in tables if t["name"] in modelled]
-        for t in tables:  # exact counts for modelled tables (estimates can be stale)
-            rows = await connectors.execute(spec, f'SELECT COUNT(*) AS n FROM "{t["name"]}"', [])
+    if spec.type == "postgres":
+        for t in tables:  # exact counts for modelled tables (estimates can be stale; BigQuery metadata is exact)
+            rows = await connectors.execute(spec, f'SELECT COUNT(*) AS n FROM {quote_table(t["name"], spec.dialect)}', [])
             t["row_count"] = rows[0]["n"]
     values: dict[str, list[str]] = {}
     primary = spec.model.datasets[0] if spec.model.datasets else None
     for dim in (primary.dimensions if primary else []):
-        if dim.type == "date":
+        if dim.type in TEMPORAL_TYPES:
             continue
-        rows = await connectors.execute(
-            spec, f'SELECT DISTINCT "{dim.column}" AS v FROM "{primary.name}" ORDER BY v', [], version_id=version.id,
-            max_rows=200)
-        values[dim.name] = [str(r["v"]) for r in rows if r["v"] is not None]
+        # Same cached, capped lookup as filter dropdowns — on BigQuery every distinct-value query is a billed scan
+        values[dim.name] = (await dimension_values(spec, version.id, dim.name, Filters()))[:200]
     catalog = {"tables": tables, "dimensionValues": values}
     _catalog_cache[version.id] = (time.monotonic(), catalog)
     return catalog

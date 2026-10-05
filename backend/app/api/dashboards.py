@@ -255,7 +255,7 @@ async def filterable(dashboard_id: int, user: CurrentUser, session: Session) -> 
     for asset_id, _vid, source in await _item_sources(session, spec):
         for ds in source.model.datasets:
             for d in ds.dimensions:
-                if d.type == "date":
+                if d.type in ("date", "datetime", "timestamp"):
                     continue
                 entry = dims.setdefault(d.name, {"name": d.name, "label": d.label or d.name, "sources": []})
                 if asset_id not in entry["sources"]:

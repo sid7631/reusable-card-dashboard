@@ -53,6 +53,11 @@ async def check_data_source(session: AsyncSession, user: User, asset: Asset, spe
             s.endpoint() == spec.endpoint() for s in lineage):
         raise _deny("Only admins can reference server settings (env:).")
 
+    if spec.bigquery and spec.bigquery.auth == "adc" and user.role != "admin" and not any(
+            s.endpoint() == spec.endpoint() for s in lineage):
+        # The server's own Google identity can reach whatever the deployment's service account can
+        raise _deny("Only admins can use the server's own Google identity — upload a service-account key.")
+
     if spec.file:
         file = await session.get(FileObject, spec.file.file_id)
         if file is None:

@@ -39,7 +39,7 @@ def test_filters_are_bound_parameters_not_interpolated():
                                      Filters.parse(hostile, "SBS,MM", "2026-01-01", "2026-03-31"), DEMO)
     assert hostile not in sql
     assert sql.endswith('AND CAST("segment" AS TEXT) = ANY($1::text[]) AND CAST("sub_segment" AS TEXT) = ANY($2::text[]) '
-                        'AND "txn_date" >= $3 AND "txn_date" <= $4')
+                        'AND "txn_date" >= $3::date AND "txn_date" <= $4::date')
     assert params[0] == [hostile] and params[1] == ["SBS", "MM"]
     assert meta == {"applied": ["segment", "sub_segment", "period"], "ignored": []}
 

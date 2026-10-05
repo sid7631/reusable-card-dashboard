@@ -12,7 +12,8 @@ from sqlglot import exp
 from sqlglot.errors import ParseError
 
 from app.governance.specs import DataSourceSpec, SemanticDataset
-from app.semantic.filters import Filters, FilterError, bind, quote
+from app.semantic.dialects import TEMPORAL_TYPES, grain_sql, literal, quote, quote_table
+from app.semantic.filters import Filters, FilterError, bind
 
 Grain = Literal["day", "week", "month", "quarter", "year"]
 AGGS = ("SUM", "AVG", "COUNT", "MIN", "MAX", "COUNT_DISTINCT")
@@ -81,26 +82,6 @@ def _measure_sql(expr: str, dialect: str) -> str:
     return node.sql(dialect=dialect)
 
 
-def _grain_sql(column: str, grain: Grain | None, dialect: str) -> str:
-    if grain is None:
-        return column
-    if grain == "day":
-        return f"CAST({column} AS DATE)"
-    if dialect == "postgres":
-        return {
-            "week": f"to_char(date_trunc('week', {column}), 'YYYY-MM-DD')",
-            "month": f"to_char({column}, 'YYYY-MM')",
-            "quarter": f"to_char({column}, 'YYYY-\"Q\"Q')",
-            "year": f"to_char({column}, 'YYYY')",
-        }[grain]
-    return {
-        "week": f"strftime(date_trunc('week', {column}), '%Y-%m-%d')",
-        "month": f"strftime({column}, '%Y-%m')",
-        "quarter": f"strftime({column}, '%Y') || '-Q' || CAST(quarter({column}) AS VARCHAR)",
-        "year": f"strftime({column}, '%Y')",
-    }[grain]
-
-
 def measure_alias(q: SemanticQuery, i: int, ds: SemanticDataset) -> str:
     """One measure is called `value` (KPIs, YoY and charts rely on it); several keep their labels."""
     if len(q.measures) == 1:
@@ -110,10 +91,6 @@ def measure_alias(q: SemanticQuery, i: int, ds: SemanticDataset) -> str:
         return m.label
     model = next((x for x in ds.measures if x.name == m.name), None)
     return (model.label or model.name) if model else f"{m.agg.lower()}_{m.column or 'rows'}"
-
-
-def _literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
 
 
 def compile_query(source: DataSourceSpec, q: SemanticQuery, filters: Filters, *,
@@ -131,10 +108,11 @@ def compile_query(source: DataSourceSpec, q: SemanticQuery, filters: Filters, *,
     for i, ref in enumerate(q.dimensions):
         if ref.name not in dims:
             raise CompileError(f"Unknown dimension “{ref.name}”.")
-        is_time = ref.name == ds.time_dimension or dims[ref.name].column == ds.time_dimension or dims[ref.name].type == "date"
+        is_time = (ref.name == ds.time_dimension or dims[ref.name].column == ds.time_dimension
+                   or dims[ref.name].type in TEMPORAL_TYPES)
         if ref.grain and not is_time:
             raise CompileError(f"“{ref.name}” is not a time dimension.")
-        select.append(f"{_grain_sql(quote(dims[ref.name].column), ref.grain, dialect)} AS {'label' if i == 0 else 'sublabel'}")
+        select.append(f"{grain_sql(quote(dims[ref.name].column, dialect), ref.grain, dialect)} AS {'label' if i == 0 else 'sublabel'}")
 
     for i, m in enumerate(q.measures):
         if m.name:
@@ -144,17 +122,17 @@ def compile_query(source: DataSourceSpec, q: SemanticQuery, filters: Filters, *,
         elif m.agg == "COUNT" and not m.column:
             sql = "COUNT(*)"
         elif m.agg == "COUNT_DISTINCT":
-            sql = f"COUNT(DISTINCT {quote(m.column)})"
+            sql = f"COUNT(DISTINCT {quote(m.column, dialect)})"
         else:
-            sql = f"{m.agg}({quote(m.column)})"
-        select.append(f"{sql} AS {quote(measure_alias(q, i, ds))}")
+            sql = f"{m.agg}({quote(m.column, dialect)})"
+        select.append(f"{sql} AS {quote(measure_alias(q, i, ds), dialect)}")
 
     if editable:
         static = []
         for f in q.filters:
             if f.dimension not in dims:
                 raise CompileError(f"Unknown dimension “{f.dimension}”.")
-            static.append(f"AND {quote(dims[f.dimension].column)} IN ({', '.join(_literal(v) for v in f.values)})")
+            static.append(f"AND {quote(dims[f.dimension].column, dialect)} IN ({', '.join(literal(v, dialect) for v in f.values)})")
         where = " ".join([*static, "{{filters}}"])
         bound = None
     else:
@@ -164,11 +142,11 @@ def compile_query(source: DataSourceSpec, q: SemanticQuery, filters: Filters, *,
             raise CompileError(str(exc)) from exc
         where = bound.text()
 
-    sql = f"SELECT {', '.join(select)}\nFROM {quote(ds.name)}\nWHERE 1=1 {where}".rstrip()
+    sql = f"SELECT {', '.join(select)}\nFROM {quote_table(ds.name, dialect)}\nWHERE 1=1 {where}".rstrip()
     if q.dimensions:
         sql += "\nGROUP BY " + ", ".join(str(i + 1) for i in range(len(q.dimensions)))
         first = q.dimensions[0]
-        time_first = first.grain is not None or dims[first.name].type == "date"
+        time_first = first.grain is not None or dims[first.name].type in TEMPORAL_TYPES
         order = q.order or ("label_asc" if time_first else "value_desc")
         value_pos = len(q.dimensions) + 1
         sql += "\nORDER BY " + {"value_desc": f"{value_pos} DESC", "value_asc": f"{value_pos} ASC",

@@ -9,10 +9,11 @@ instead of being silently dropped (architecture §7.2).
 import json
 import re
 from dataclasses import dataclass, field, replace
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from app.governance.specs import SemanticDataset
+from app.semantic.dialects import TEMPORAL_TYPES, membership, placeholder, quote, time_bounds
 
 DIMENSION_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 PERIOD = "period"  # pseudo-dimension reported for the time window
@@ -78,47 +79,37 @@ class Filters:
                            "f": str(self.date_from), "t": str(self.date_to)}, separators=(",", ":"))
 
 
-def quote(ident: str) -> str:
-    return '"' + ident.replace('"', '""') + '"'
-
-
 @dataclass
 class Bound:
     """SQL conditions (each starting with AND) with their bound parameters."""
+    dialect: str = "postgres"
     sql: list[str] = field(default_factory=list)
     params: list[Any] = field(default_factory=list)
     applied: list[str] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
 
-    def param(self, value: Any, offset: int) -> str:
+    def param(self, value: Any, offset: int = 0) -> str:
         self.params.append(value)
-        return f"${offset + len(self.params)}"
+        return placeholder(offset + len(self.params), self.dialect)
 
     def text(self) -> str:
         return " ".join(self.sql)
 
 
-def membership(column_sql: str, placeholder: str, dialect: str) -> str:
-    """`column IN (values)` with the values bound as one text-array parameter."""
-    if dialect == "postgres":
-        return f"CAST({column_sql} AS TEXT) = ANY({placeholder}::text[])"
-    return f"list_contains(CAST({placeholder} AS VARCHAR[]), CAST({column_sql} AS VARCHAR))"
-
-
 def bind(filters: Filters, dataset: SemanticDataset | None, dialect: str, *, offset: int = 0,
          static: dict[str, tuple[str, ...]] | None = None) -> Bound:
     """Conditions for `dataset`. `static` filters are part of the card's own definition."""
-    out = Bound()
+    out = Bound(dialect)
     columns = {d.name: d.column for d in dataset.dimensions} if dataset else {}
 
     for name, values in (static or {}).items():
         if name not in columns:
             raise FilterError(f"Unknown dimension “{name}”.")
-        out.sql.append(f"AND {membership(quote(columns[name]), out.param(list(values), offset), dialect)}")
+        out.sql.append(f"AND {membership(quote(columns[name], dialect), out.param(list(values), offset), dialect)}")
 
     for name, values in filters.dims.items():
         if name in columns:
-            out.sql.append(f"AND {membership(quote(columns[name]), out.param(list(values), offset), dialect)}")
+            out.sql.append(f"AND {membership(quote(columns[name], dialect), out.param(list(values), offset), dialect)}")
             out.applied.append(name)
         else:
             out.ignored.append(name)
@@ -127,11 +118,13 @@ def bind(filters: Filters, dataset: SemanticDataset | None, dialect: str, *, off
         time_col = dataset.time_dimension if dataset else None
         time_dim = next((d for d in dataset.dimensions if d.name == time_col or d.column == time_col), None) if dataset else None
         if time_col:
-            column = quote(time_dim.column if time_dim else time_col)
-            if filters.date_from:
-                out.sql.append(f"AND {column} >= {out.param(filters.date_from, offset)}")
-            if filters.date_to:
-                out.sql.append(f"AND {column} <= {out.param(filters.date_to, offset)}")
+            column_type = time_dim.type if time_dim and time_dim.type in TEMPORAL_TYPES else "date"
+            # DATETIME/TIMESTAMP: exclusive upper bound on the next day, so the whole last day counts
+            upper = filters.date_to + timedelta(days=1) if filters.date_to and column_type != "date" else filters.date_to
+            out.sql += [f"AND {c}" for c in time_bounds(
+                quote(time_dim.column if time_dim else time_col, dialect), column_type,
+                out.param(filters.date_from, offset) if filters.date_from else None,
+                out.param(upper, offset) if upper else None, dialect)]
             out.applied.append(PERIOD)
         else:
             out.ignored.append(PERIOD)

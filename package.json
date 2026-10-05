@@ -16,6 +16,7 @@
     "stack": "docker compose -f infra/docker-compose.yml --profile full up --build",
     "dev:worker": "cd backend && OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run celery -A app.worker.celery_app worker -Q interactive,refresh -c 8 --loglevel=info",
     "dev:beat": "cd backend && uv run celery -A app.worker.celery_app beat --loglevel=info --schedule /tmp/spendboard-celerybeat",
-    "loadtest": "cd backend && uv run locust -f loadtest/locustfile.py --host http://localhost:8010"
+    "loadtest": "cd backend && uv run locust -f loadtest/locustfile.py --host http://localhost:8010",
+    "infra:bigquery": "docker compose -f infra/docker-compose.yml --profile bigquery up -d bigquery"
   }
 }

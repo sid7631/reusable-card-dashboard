@@ -17,7 +17,8 @@ from app.semantic.filters import Filters, bind
 FILTER_TOKEN = "{{filters}}"
 
 _WRITE_NODES = (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.Create, exp.Drop, exp.Alter,
-                exp.Command, exp.Into, exp.TruncateTable, exp.Lock, exp.Copy, exp.Attach, exp.Pragma, exp.Set)
+                exp.Command, exp.Into, exp.TruncateTable, exp.Lock, exp.Copy, exp.Attach, exp.Pragma, exp.Set,
+                exp.Export)  # BigQuery EXPORT DATA writes query results to Cloud Storage
 
 
 class SqlValidationError(ValueError):
@@ -40,13 +41,17 @@ def validate_sql(sql: str, dialect: str = "postgres") -> str:
     stmt = statements[0]
     if not isinstance(stmt, exp.Query) or any(stmt.find_all(*_WRITE_NODES)):
         raise SqlValidationError("Only read-only SELECT queries are allowed.")
+    if any(stmt.find_all(exp.Parameter, exp.Placeholder)):
+        raise SqlValidationError("Query parameters ($1, @name, ?) are reserved for filters.")
     return text
 
 
 def _dataset_for(sql: str, source: DataSourceSpec) -> SemanticDataset | None:
     """The modelled table the SQL reads from (first match), else the source's primary dataset."""
     try:
-        tables = {t.name for t in sqlglot.parse_one(sql.replace(FILTER_TOKEN, ""), dialect=source.dialect).find_all(exp.Table)}
+        tables = set()
+        for t in sqlglot.parse_one(sql.replace(FILTER_TOKEN, ""), dialect=source.dialect).find_all(exp.Table):
+            tables |= {t.name, f"{t.db}.{t.name}" if t.db else t.name}  # model names may be dataset-qualified
     except ParseError:
         tables = set()
     datasets = source.model.datasets

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { api } from '../lib/api';
-import type { Card, CardConfig, CardFilter, ChartType, Dataset, Row } from '../lib/types';
+import { TEMPORAL_TYPES, type Card, type CardConfig, type CardFilter, type ChartType, type Dataset, type Row } from '../lib/types';
 import { SCHEMES } from '../lib/format';
 import { copilotRespond, toSemanticQuery } from '../lib/builder';
 import ChartRenderer from '../components/ChartRenderer';
@@ -284,7 +284,7 @@ export default function CardStudio() {
   // On-card filter controls, available from every creation mode
   const PERIOD_CHOICES = [['month', 'Month'], ['quarter', 'Quarter'], ['year', 'Full year'], ['ytd', 'YTD']] as const;
 
-  const filterableDims = (primary?.dimensions ?? []).filter((d) => d.type !== 'date');
+  const filterableDims = (primary?.dimensions ?? []).filter((d) => !(TEMPORAL_TYPES as readonly string[]).includes(d.type));
   const controlFilters = config.controls?.filters ?? [];
   const toggleControlDim = (name: string) => {
     const next = controlFilters.includes(name) ? controlFilters.filter((d) => d !== name) : [...controlFilters, name];
@@ -373,7 +373,7 @@ export default function CardStudio() {
                 </select>
               ) : <span className="font-semibold">{dataset?.label ?? '…'}</span>}
               {' '}· <span className="font-mono">{dataset?.name ?? '…'}</span>
-              {dataset ? ` · ${dataset.rowCount.toLocaleString()} rows · ${dataset.type === 'postgres' ? 'Postgres' : dataset.type === 'rest' ? 'REST extract' : 'File extract'}` : ''}
+              {dataset ? ` · ${dataset.rowCount.toLocaleString()} rows · ${{ postgres: 'Postgres', bigquery: 'BigQuery', rest: 'REST extract', file: 'File extract' }[dataset.type]}` : ''}
             </p>
             {card && <div className="mt-2"><GovernanceBar kind="cards" asset={card} onChanged={() => setReloadKey((k) => k + 1)} /></div>}
           </div>

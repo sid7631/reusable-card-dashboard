@@ -59,6 +59,18 @@ class FileConfig(BaseModel):
     file_id: int
 
 
+class BigQueryConfig(BaseModel):
+    project: str = Field(pattern=r"^[a-z][a-z0-9-]{4,61}[a-z0-9]$")
+    # Default dataset: unqualified table names in card SQL and the model resolve against it
+    dataset: str = Field(pattern=r"^[A-Za-z0-9_]{1,1024}$")
+    location: str | None = None          # e.g. "US", "EU", "asia-south1"
+    # service_account: a key JSON stored as a secret. adc: the server's own Google identity (admins only)
+    auth: Literal["service_account", "adc"] = "service_account"
+    secret_ref: str | None = None
+    # BigQuery bills per byte scanned; a query that would scan more fails before it runs (and costs nothing)
+    maximum_bytes_billed: int = Field(10 * 1024**3, ge=10 * 1024**2)
+
+
 class ExecutionPolicy(BaseModel):
     max_concurrency: int = Field(5, ge=1, le=100)
     timeout_s: float = Field(30, gt=0, le=300)
@@ -69,7 +81,8 @@ class ExecutionPolicy(BaseModel):
 class Dimension(BaseModel):
     name: str
     column: str
-    type: Literal["string", "number", "date", "boolean"] = "string"
+    # date / datetime / timestamp matter for time windows: BigQuery won't compare a TIMESTAMP with a DATE
+    type: Literal["string", "number", "date", "datetime", "timestamp", "boolean"] = "string"
     label: str = ""
     description: str = ""
 
@@ -100,8 +113,9 @@ class SemanticModel(BaseModel):
 class DataSourceSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["postgres", "rest", "file"]
+    type: Literal["postgres", "rest", "file", "bigquery"]
     connection: PostgresConnection | None = None
+    bigquery: BigQueryConfig | None = None
     rest: RestConfig | None = None
     file: FileConfig | None = None
     execution: ExecutionPolicy = Field(default_factory=ExecutionPolicy)
@@ -120,18 +134,19 @@ class DataSourceSpec(BaseModel):
 
     @model_validator(mode="after")
     def _section_matches_type(self) -> "DataSourceSpec":
-        section = {"postgres": self.connection, "rest": self.rest, "file": self.file}[self.type]
+        section = {"postgres": self.connection, "rest": self.rest, "file": self.file, "bigquery": self.bigquery}[self.type]
         if section is None:
             raise ValueError(f"A {self.type} source needs its `{ {'postgres': 'connection'}.get(self.type, self.type)}` settings.")
         return self
 
     @property
     def dialect(self) -> str:
-        return "postgres" if self.type == "postgres" else "duckdb"
+        return {"postgres": "postgres", "bigquery": "bigquery"}.get(self.type, "duckdb")
 
     def secret_refs(self) -> list[str]:
         refs = [self.connection.secret_ref if self.connection else None,
-                self.rest.auth.secret_ref if self.rest else None]
+                self.rest.auth.secret_ref if self.rest else None,
+                self.bigquery.secret_ref if self.bigquery else None]
         return [r for r in refs if r]
 
     def endpoint(self) -> tuple[Any, ...]:
@@ -143,6 +158,9 @@ class DataSourceSpec(BaseModel):
             from urllib.parse import urlsplit
             u = urlsplit(self.rest.url)
             return ("rest", u.scheme, u.netloc, self.rest.auth.type, self.rest.auth.header, self.rest.auth.username)
+        if self.bigquery:
+            # A service-account key grants whatever that account can reach, so reuse is bound to the project
+            return ("bigquery", self.bigquery.project, self.bigquery.auth)
         return ("file", self.file.file_id if self.file else None)
 
 

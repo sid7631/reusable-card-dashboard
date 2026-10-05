@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from app.connectors import duck, postgres, rest
+from app.connectors import bigquery, duck, postgres, rest
 from app.connectors.common import QueryError
 from app.core.db import SessionLocal
 from app.governance.specs import DataSourceSpec
@@ -28,6 +28,8 @@ async def execute(spec: DataSourceSpec, sql: str, params: list[Any], *, version_
                   max_rows: int | None = None) -> list[dict[str, Any]]:
     if spec.type == "postgres":
         return await postgres.execute(spec, sql, params, max_rows=max_rows)
+    if spec.type == "bigquery":
+        return await bigquery.execute(spec, sql, params, max_rows=max_rows)
     return await duck.query(await _duck_path(spec, version_id), sql, params,
                             timeout_s=spec.execution.timeout_s, max_rows=max_rows)
 
@@ -35,6 +37,8 @@ async def execute(spec: DataSourceSpec, sql: str, params: list[Any], *, version_
 async def introspect(spec: DataSourceSpec, *, version_id: int | None = None) -> list[dict[str, Any]]:
     if spec.type == "postgres":
         return await postgres.introspect(spec)
+    if spec.type == "bigquery":
+        return await bigquery.introspect(spec)
     import asyncio
     return await asyncio.to_thread(duck.describe, await _duck_path(spec, version_id))
 
@@ -44,6 +48,8 @@ async def test(spec: DataSourceSpec) -> dict[str, Any]:
     if spec.type == "postgres":
         await postgres.test(spec)
         return {"tables": await postgres.introspect(spec)}
+    if spec.type == "bigquery":
+        return {"tables": await bigquery.test(spec)}
     if spec.type == "rest":
         from app.connectors.files import arrow_table
         records = await rest.fetch_records(spec, max_pages=1)

@@ -234,6 +234,7 @@ class Connector(Protocol):
 | Type | Execution | Notes |
 |---|---|---|
 | **Postgres** | Push-down SQL (live) or scheduled extract | Read-only DB role required; `statement_timeout`; server-side cursor; row cap |
+| **BigQuery** | Push-down SQL (live) | Service-account key (or admin-only server identity); typed `@p` parameters; `maximum_bytes_billed` per query; job timeout + cancel; dataset-default table names |
 | **REST API** | Always **extract**: fetch → normalise to Arrow → Parquet → query with DuckDB | Auth (API key / bearer / basic), pagination, JSONPath record selector, rate limit, TTL |
 | **CSV / Excel / JSON** | Upload → ingest job → Parquet → DuckDB | Schema inference + user confirmation; each re-upload = new data-source version |
 

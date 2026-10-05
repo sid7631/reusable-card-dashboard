@@ -253,12 +253,13 @@ export interface DirectoryEntry {
 export type AssetKind = 'cards' | 'dashboards' | 'data-sources';
 
 // ---------------------------------------------------------------- data sources
-export type SourceType = 'postgres' | 'rest' | 'file';
+export type SourceType = 'postgres' | 'rest' | 'file' | 'bigquery';
 
 export interface ColumnInfo { name: string; type: string }
 export interface TableInfo { name: string; row_count: number; columns: ColumnInfo[] }
 
-export interface Dimension { name: string; column: string; type: 'string' | 'number' | 'date' | 'boolean'; label: string; description: string }
+export interface Dimension { name: string; column: string; type: 'string' | 'number' | 'date' | 'datetime' | 'timestamp' | 'boolean'; label: string; description: string }
+export const TEMPORAL_TYPES = ['date', 'datetime', 'timestamp'] as const;
 export interface Measure { name: string; expr: string; label: string; description: string; format: 'number' | 'currency' | 'percent' }
 export interface SemanticDataset {
   name: string;
@@ -283,6 +284,15 @@ export interface DataSourceSpec {
     table: string;
   } | null;
   file?: { file_id: number } | null;
+  bigquery?: {
+    project: string;
+    dataset: string;
+    location?: string | null;
+    /** service_account: key JSON stored as a secret · adc: the server's own Google identity (admins only) */
+    auth: 'service_account' | 'adc';
+    secret_ref?: string | null;
+    maximum_bytes_billed: number;
+  } | null;
   execution: { max_concurrency: number; timeout_s: number; cache_ttl_s: number };
   model: SemanticModel;
 }
@@ -314,7 +324,7 @@ export interface Dataset {
   id: number;
   version_id: number;
   type: SourceType;
-  dialect: 'postgres' | 'duckdb';
+  dialect: 'postgres' | 'duckdb' | 'bigquery';
   tables: TableInfo[];
   model: SemanticModel;
   /** Set when the source could not be reached. */

@@ -23,7 +23,9 @@ def suggest_model(tables: list[dict[str, Any]]) -> dict[str, Any]:
                 continue
             if TEMPORAL.search(typ):
                 time_dim = time_dim or name
-                dims.append({"name": name, "column": name, "type": "date", "label": _label(name)})
+                kind = "timestamp" if re.search(r"timestamp", typ, re.I) else "datetime" if re.search(r"datetime", typ, re.I) \
+                    else "date" if re.search(r"^date$", typ.strip(), re.I) else "timestamp"
+                dims.append({"name": name, "column": name, "type": kind, "label": _label(name)})
             elif NUMERIC.search(typ) and not DIMENSION_NUMBERS.search(name):
                 measures.append({"name": f"total_{name}", "expr": f'SUM("{name}")', "label": f"Total {_label(name).lower()}"})
             else:

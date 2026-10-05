@@ -7,7 +7,7 @@ import AssetBadges from '../components/AssetBadges';
 
 type Tab = 'all' | 'global' | 'private' | 'shared';
 const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global'], ['private', 'My sources'], ['shared', 'Shared with me']];
-export const SOURCE_TYPE_LABEL = { postgres: 'Postgres', rest: 'REST API', file: 'File' } as const;
+export const SOURCE_TYPE_LABEL = { postgres: 'Postgres', rest: 'REST API', file: 'File', bigquery: 'BigQuery' } as const;
 
 export default function DataSourcesPage() {
   const [tab, setTab] = useState<Tab>('all');

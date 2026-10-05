@@ -42,7 +42,10 @@ function setColumn(ds: SemanticDataset, col: string, type: string, role: Role, m
   if (role === 'dimension' || role === 'time') {
     const dim: Dimension = {
       name: col, column: col, label: meta.label, description: meta.description,
-      type: role === 'time' || TEMPORAL.test(type) ? 'date' : NUMERIC.test(type) ? 'number' : 'string',
+      // Time columns keep their real kind: BigQuery won't compare a TIMESTAMP or DATETIME with a DATE
+      type: role === 'time' || TEMPORAL.test(type)
+        ? (/timestamp/i.test(type) ? 'timestamp' : /datetime/i.test(type) ? 'datetime' : /^date$/i.test(type.trim()) ? 'date' : 'timestamp')
+        : NUMERIC.test(type) ? 'number' : 'string',
     };
     dimensions.push(dim);
     if (role === 'time') time_dimension = col;

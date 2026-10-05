@@ -23,6 +23,13 @@ services:
       interval: 2s
       retries: 30
 
+  # Local stand-in for BigQuery (development and tests only): npm run infra:bigquery
+  bigquery:
+    profiles: [bigquery]
+    image: ghcr.io/goccy/bigquery-emulator:latest
+    command: ["--project=spendboard-demo", "--dataset=analytics"]
+    ports: ["${BIGQUERY_PORT:-9050}:9050"]
+
   api:
     profiles: [full]
     build: ../backend

@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     max_upload_mb: int = 50
     # Whether non-admins may point sources at private/loopback addresses (SSRF guard). On for local dev.
     allow_private_network_sources: bool = False
+    # Development/tests only: send every BigQuery source to an emulator (e.g. http://localhost:9050)
+    bigquery_emulator_host: str | None = None
     rest_max_records: int = 100_000
     rest_max_response_mb: int = 20
 

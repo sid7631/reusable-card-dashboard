@@ -5,6 +5,7 @@ drag-and-drop **dashboards**. Cards, dashboards and data sources are **versioned
 space or the **global** library, and are published through admin approval.
 
 Design and roadmap: [docs/architecture.md](docs/architecture.md).
+Installing it somewhere else (components, ports, settings, Docker / Kubernetes / bare-metal steps): [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Try it (Docker only)
 

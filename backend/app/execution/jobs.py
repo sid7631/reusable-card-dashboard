@@ -150,6 +150,11 @@ async def get_result(job: Job, *, wait: bool = True) -> Result | None:
         await pubsub.aclose()
 
 
+def job_deadline_s(source: DataSourceSpec) -> float:
+    """Hard ceiling on one card job, a little above the source's query timeout."""
+    return min(source.execution.timeout_s, get_settings().query_timeout_s) + 10
+
+
 async def trigger(job: Job) -> None:
     """Start a computation unless one for the same key is already running (single-flight)."""
     r = redis()
@@ -158,12 +163,14 @@ async def trigger(job: Job) -> None:
     lock_ttl = int(job.source.execution.timeout_s + 20)
     if await r.set(f"lock:{job.key}", "1", nx=True, ex=lock_ttl):
         await r.delete(f"err:{job.key}")
-        await dispatch(job)
+        await dispatch(job, expires_s=lock_ttl)
 
 
-async def dispatch(job: Job) -> None:
+async def dispatch(job: Job, *, expires_s: float | None = None) -> None:
     from app.execution import queue
-    await queue.submit("run_card", job.to_json())
+    # A job still queued when its lock expires has been re-triggered by its waiters (or they gave
+    # up), so drop it instead of piling up duplicates behind busy workers
+    await queue.submit("run_card", job.to_json(), expires_s=expires_s)
 
 
 # ---------------------------------------------------------------- computing
@@ -197,7 +204,14 @@ async def compute(job: Job) -> None:
         if await r.exists(f"breaker:{job.endpoint_key}"):
             raise QueryError("This data source is failing — paused briefly to let it recover.")
         async with source_slot(job.endpoint_key, source.execution.max_concurrency):
-            result = await run_card(CardSpec.model_validate(job.card_spec), source, filters_from_json(job.filters))
+            # Connectors enforce their own timeouts; this bounds anything that slips past them (a
+            # client library retrying, a stalled connection) so a job can never hold a worker
+            try:
+                result = await asyncio.wait_for(
+                    run_card(CardSpec.model_validate(job.card_spec), source, filters_from_json(job.filters)),
+                    timeout=job_deadline_s(source))
+            except TimeoutError:
+                raise QueryError("Query timed out.") from None
         now = time.time()
         ttl = source.execution.cache_ttl_s
         entry = {**result, "computed_at": now, "fresh_until": now + ttl}

@@ -95,6 +95,9 @@ def _friendly(exc: Exception, spec: DataSourceSpec) -> str:
         return f"This query would scan more than {gb:g} GB (the source's limit). Add filters or raise the limit."
     if isinstance(exc, (gexc.Unauthorized, gexc.Forbidden)):
         return "BigQuery refused access — check the service account's roles (BigQuery Data Viewer + Job User)."
+    if isinstance(exc, gexc.RetryError):
+        cause = exc.cause and str(exc.cause).splitlines()[0][:150]
+        return f"Could not reach BigQuery{f' ({cause})' if cause else ''}."
     if isinstance(exc, gexc.NotFound):
         return text.split("\n")[0]
     return text.split("\n")[0][:500]
@@ -111,11 +114,19 @@ def _run(client: bigquery.Client, spec: DataSourceSpec, sql: str, params: list[A
         labels={"app": "spendboard"},
     )
     job_config.job_timeout_ms = int(timeout_s * 1000)  # server-side limit as well as the client wait
-    job = client.query(sql, job_config=job_config, location=cfg.location)
+    # The library's default retries run for up to 10 minutes (e.g. against an unreachable endpoint),
+    # holding a worker the whole time. API calls retry only within the source's timeout, and whole-job
+    # retries are off — with any job_retry set, the library wraps the insert in its own 10-minute
+    # retry. A failed card is simply recomputed on the next request.
+    retry = bigquery.DEFAULT_RETRY.with_deadline(timeout_s)
+    job = client.query(sql, job_config=job_config, location=cfg.location, retry=retry, timeout=timeout_s, job_retry=None)
     try:
-        rows = job.result(timeout=timeout_s, max_results=max_rows)
+        rows = job.result(timeout=timeout_s, max_results=max_rows, retry=retry, job_retry=None)
     except concurrent.futures.TimeoutError:
-        job.cancel()
+        try:
+            job.cancel(timeout=5)
+        except Exception:  # noqa: BLE001 — best effort; the server-side job timeout still applies
+            pass
         raise QueryError("Query timed out.") from None
     return [{k: jsonable(v) for k, v in row.items()} for row in rows]
 

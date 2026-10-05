@@ -8,6 +8,7 @@ They are skipped when it isn't reachable.
 import datetime as dt
 import json
 import os
+import time
 
 import httpx
 import pytest
@@ -182,3 +183,17 @@ async def test_key_stays_bound_to_its_project(user, other_user, admin, bq):
     moved = await other_user.put(f"/api/data-sources/{copy_id}", {"name": "Elsewhere",
                                                                   "spec": {**bq_body(project="attacker-project"), "model": MODEL}})
     assert moved.status_code == 200 and not moved.json()["has_credentials"]   # the key did not follow
+
+
+async def test_unreachable_bigquery_fails_within_the_source_timeout(monkeypatch):
+    # The client library's default retries would keep a worker busy for ~10 minutes
+    from app.connectors import bigquery as bq_connector
+    from app.connectors.common import QueryError
+    monkeypatch.setattr(get_settings(), "bigquery_emulator_host", "http://127.0.0.1:9")   # nothing listens
+    monkeypatch.setattr(get_settings(), "query_timeout_s", 2.0)
+    bq_connector._clients.clear()
+    t0 = time.monotonic()
+    with pytest.raises(QueryError):
+        await bq_connector.execute(bq_spec(), "SELECT 1", [])
+    assert time.monotonic() - t0 < 15
+    bq_connector._clients.clear()

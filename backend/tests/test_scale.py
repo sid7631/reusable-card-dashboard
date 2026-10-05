@@ -133,13 +133,28 @@ async def test_waiters_recover_from_a_lost_job(user, seeded, monkeypatch):
     card = (await user.post("/api/cards", kpi(seeded["source_id"], "SELECT MAX(amount) AS value FROM transactions WHERE 1=1 {{filters}}"))).json()
     real_dispatch, lost = jobs.dispatch, []
 
-    async def lose_first(job):
+    async def lose_first(job, **kwargs):
         if not lost:            # the first dispatch never runs (e.g. a worker died holding it)…
             lost.append(job.key)
             await redis().expire(f"lock:{job.key}", 1)   # …and its lock expires
             return
-        await real_dispatch(job)
+        await real_dispatch(job, **kwargs)
 
     monkeypatch.setattr(jobs, "dispatch", lose_first)
     res = await user.get(f"/api/cards/{card['id']}/data")
     assert res.status_code == 200 and res.json()["rows"][0]["value"] > 0 and lost
+
+
+async def test_a_hung_source_fails_the_job_instead_of_holding_a_worker(user, seeded, monkeypatch):
+    from app.execution import jobs
+
+    async def hang(*_args, **_kwargs):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(jobs, "run_card", hang)
+    monkeypatch.setattr(jobs, "job_deadline_s", lambda _source: 0.5)
+    card = (await user.post("/api/cards", kpi(seeded["source_id"], "SELECT 1 AS value"))).json()
+    t0 = time.monotonic()
+    res = await user.get(f"/api/cards/{card['id']}/data", params={"filters": json.dumps({"n": ["hung"]})})
+    assert res.status_code == 400 and res.json()["detail"] == "Query timed out."
+    assert time.monotonic() - t0 < 5

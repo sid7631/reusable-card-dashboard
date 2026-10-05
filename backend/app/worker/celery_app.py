@@ -29,10 +29,15 @@ celery.conf.update(
     task_acks_late=True,               # a crashed worker's job is redelivered
     worker_prefetch_multiplier=1,      # don't let one worker hoard slow queries
     task_ignore_result=True,           # results go to the Redis result cache, not Celery's backend
+    # Last line of defence: jobs bound their own queries (jobs.job_deadline_s), but nothing may hold a
+    # worker process indefinitely. Soft limit raises inside the task; the hard limit replaces the process.
+    task_soft_time_limit=get_settings().query_timeout_s + 60,
+    task_time_limit=get_settings().query_timeout_s + 90,
     broker_connection_retry_on_startup=True,
     beat_schedule={
-        "refresh-rest-extracts": {"task": "spendboard.refresh_rest", "schedule": 60.0},
-        "warm-global-dashboards": {"task": "spendboard.warm_dashboards", "schedule": 300.0},
+        # Expire with the schedule: if workers are busy, skip a round rather than queue a backlog
+        "refresh-rest-extracts": {"task": "spendboard.refresh_rest", "schedule": 60.0, "options": {"expires": 60}},
+        "warm-global-dashboards": {"task": "spendboard.warm_dashboards", "schedule": 300.0, "options": {"expires": 300}},
     },
 )
 

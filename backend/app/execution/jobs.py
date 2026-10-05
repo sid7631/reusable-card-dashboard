@@ -161,17 +161,9 @@ async def trigger(job: Job) -> None:
         await dispatch(job)
 
 
-_inline_tasks: set[asyncio.Task] = set()
-
-
 async def dispatch(job: Job) -> None:
-    if get_settings().execution_mode == "inline":
-        task = asyncio.create_task(compute(job))
-        _inline_tasks.add(task)
-        task.add_done_callback(_inline_tasks.discard)
-        return
-    from app.worker.celery_app import celery
-    await asyncio.to_thread(celery.send_task, "spendboard.run_card", args=[job.to_json()], queue="interactive")
+    from app.execution import queue
+    await queue.submit("run_card", job.to_json())
 
 
 # ---------------------------------------------------------------- computing

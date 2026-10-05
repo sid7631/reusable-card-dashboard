@@ -57,9 +57,9 @@ This stack is for testing only: it uses demo passwords and allows connections to
 | Auth (simulated SSO) | Node service in the web deployment — issues RS256 JWTs, publishes JWKS |
 | API | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, SQLGlot |
 | Metadata | Postgres 16 |
-| Cache / queue | Redis 7 (result cache, locks, broker) + Celery workers and beat |
+| Cache / queue | Redis 7 (result cache, locks, broker) + Celery workers and beat; queue is swappable — see [INSTALL §4b](docs/INSTALL.md#4b-the-job-queue-celery-and-alternatives) |
 | Demo data | Postgres `demo_warehouse` — 60k charge transactions, queried through a read-only role |
-| Extracts | DuckDB (+ PyArrow) for uploaded files and REST data, stored under `backend/storage/` |
+| Extracts | DuckDB (+ PyArrow) for uploaded files and REST data, stored on local disk (`backend/storage/`) or S3 — `STORAGE_BACKEND`, see [INSTALL §4a](docs/INSTALL.md#4a-file-storage-local-disk-or-s3) |
 
 ```
 apps/web/            SPA + server/index.mjs (auth + production static/proxy)

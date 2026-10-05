@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import time
 from pathlib import Path
@@ -16,6 +17,7 @@ from app.connectors.model import suggest_model
 from app.core import secrets
 from app.core.auth import CurrentUser, Session
 from app.core.config import get_settings
+from app.core.storage import get_storage, scratch_path
 from app.execution.cards import run_sql
 from app.semantic.dialects import TEMPORAL_TYPES, quote_table
 from app.semantic.filters import Filters
@@ -192,13 +194,21 @@ async def upload_file(file: UploadFile, user: CurrentUser, session: Session) -> 
                         checksum=checksum, storage_key="", db_key="")
     session.add(record)
     await session.flush()
-    raw_path = duck.storage("uploads", f"{record.id}{Path(file.filename).suffix.lower()}")
-    raw_path.write_bytes(data)
-    db_path = duck.storage("files", f"{record.id}.duckdb")
-    import asyncio
-    tables = await asyncio.to_thread(files.ingest, raw_path, fmt, db_path,
-                                     duck.safe_table_name(Path(file.filename).stem, "upload"))
-    record.storage_key, record.db_key, record.tables = str(raw_path), str(db_path), tables
+    suffix = Path(file.filename).suffix.lower()
+    raw_path, db_path = scratch_path(suffix), scratch_path(".duckdb")
+    try:
+        raw_path.write_bytes(data)
+        tables = await asyncio.to_thread(files.ingest, raw_path, fmt, db_path,
+                                         duck.safe_table_name(Path(file.filename).stem, "upload"))
+        # Storage keys, not paths: the same rows work on local disk or S3 (app/core/storage.py)
+        record.storage_key, record.db_key = f"uploads/{record.id}{suffix}", f"files/{record.id}.duckdb"
+        store = get_storage()
+        await asyncio.to_thread(store.put_file, record.storage_key, raw_path)
+        await asyncio.to_thread(store.put_file, record.db_key, db_path)
+    finally:
+        raw_path.unlink(missing_ok=True)
+        db_path.unlink(missing_ok=True)
+    record.tables = tables
     await session.commit()
     return {"id": record.id, "filename": record.filename, "format": fmt, "size": record.size, "tables": tables,
             "suggested_model": suggest_model(tables)}

@@ -20,8 +20,8 @@ SpendBoard is four application processes and two pieces of infrastructure, plus 
 | 3 | **Worker** | Runs every card query against the data sources; refreshes REST extracts; warms dashboards | Python 3.12 · Celery | `celery -A app.worker.celery_app worker -Q interactive,refresh -c 8` | 1+ (scale for query throughput) |
 | 4 | **Scheduler** | Triggers background jobs: REST refresh every 60 s, dashboard warm-up every 5 min | Python 3.12 · Celery beat | `celery -A app.worker.celery_app beat --schedule /tmp/celerybeat-schedule` | **exactly 1** |
 | 5 | **PostgreSQL** | Metadata: users, cards/dashboards/sources and their versions, shares, change requests, encrypted credentials, uploaded-file records, audit log | PostgreSQL 16 | — | 1 (managed service recommended) |
-| 6 | **Redis** | Card-result cache, single-flight locks, Celery job queue, completion messages, per-source concurrency counters, assistant rate limit | Redis 7 | — | 1 |
-| 7 | **Shared storage** | Uploaded files and DuckDB extracts (`STORAGE_DIR`). Must be the **same filesystem for the API and all workers** | Local disk / Docker volume / NFS / EFS / Filestore | — | 1 |
+| 6 | **Redis** | Card-result cache, single-flight locks, Celery job queue (unless `CELERY_BROKER_URL` points elsewhere), completion messages, per-source concurrency counters, current-REST-extract pointers, assistant rate limit | Redis 7 | — | 1 |
+| 7 | **File storage** | Uploaded files and DuckDB extracts. Either a **shared filesystem** for the API and all workers (`STORAGE_BACKEND=local`, `STORAGE_DIR`), or an **S3 bucket** (`STORAGE_BACKEND=s3`), in which case each process only needs local scratch/cache disk | Docker volume / NFS / EFS / Filestore, or S3 / MinIO / R2 / any S3-compatible store | — | 1 |
 
 Optional:
 
@@ -89,12 +89,13 @@ You don't install these by hand — `uv sync` and `npm ci` do, from the lock fil
 | sqlglot | 30.21.0 | Parsing, validating and quoting SQL for Postgres, DuckDB and BigQuery |
 | redis | 6.4.0 | Cache, locks, rate limit |
 | celery[redis] | 5.6.3 | Workers and scheduler |
+| boto3 | 1.43.108 | S3 file storage (only used when `STORAGE_BACKEND=s3`) |
 | duckdb, pyarrow, openpyxl, python-multipart | 1.5.6, 25.0.1, 3.1.5, 0.0.32 | File uploads and REST extracts |
 | cryptography | 50.0.2 | Encrypting stored credentials |
 | google-cloud-bigquery | 3.46.1 | BigQuery data sources |
 | openai | 3.22.1 | Assistant (OpenAI chat-completions format: Ollama, Azure OpenAI) |
 
-Development only: pytest, pytest-asyncio, locust.
+Development only: pytest, pytest-asyncio, locust, moto (S3 emulator for tests).
 
 ### Web (`apps/web/package.json`, locked in `package-lock.json`)
 
@@ -121,7 +122,8 @@ All backend settings are environment variables (or `backend/.env`). The API, wor
 | `DATABASE_URL` | `postgresql+asyncpg://spendboard:…@db:5432/spendboard` | Metadata database |
 | `REDIS_URL` | `redis://redis:6379/0` | |
 | `SECRET_KEY` | 32+ random characters | Encrypts stored credentials. **Same value everywhere; never change it** after credentials are stored (they become unreadable) |
-| `STORAGE_DIR` | `/data/storage` | Shared by API and workers |
+| `STORAGE_BACKEND` | `local` or `s3` | Where uploads and extracts live — see [§4a](#4a-file-storage-local-disk-or-s3) |
+| `STORAGE_DIR` | `/data/storage` | `local`: shared by API and workers. `s3`: per-process cache and scratch only |
 | `JWKS_URL`, `JWT_ISSUER`, `JWT_AUDIENCE` | `http://web:3001/auth/.well-known/jwks.json`, `spendboard-auth`, `spendboard-api` | Your identity provider's values when you replace the simulated one |
 
 ### Limits and behaviour
@@ -134,6 +136,7 @@ All backend settings are environment variables (or `backend/.env`). The API, wor
 | `REST_MAX_RECORDS` / `REST_MAX_RESPONSE_MB` | 100000 / 20 | REST data sources |
 | `ALLOW_PRIVATE_NETWORK_SOURCES` | false | `true` lets non-admins connect sources to private addresses — development only |
 | `EXECUTION_MODE` | celery | `inline` runs queries inside the API (no worker) — tests/demos only |
+| `CELERY_BROKER_URL` | = `REDIS_URL` | Job-queue broker; `amqp://…` (RabbitMQ) or `sqs://…` move the queue off Redis — see [§4b](#4b-the-job-queue-celery-and-alternatives) |
 | `STALE_GRACE_S` / `RESULT_WAIT_S` | 21600 / 60 | How long stale results may be served; how long a request waits for a query |
 | `BREAKER_FAILURES` / `BREAKER_OPEN_S` | 5 / 30 | Pause a failing data source |
 
@@ -164,6 +167,55 @@ All backend settings are environment variables (or `backend/.env`). The API, wor
 | `API_URL` | http://localhost:8010 | Where `/api` is proxied |
 
 ---
+
+## 4a. File storage: local disk or S3
+
+All code reads and writes files through one interface (`backend/app/core/storage.py`) using **keys** such as
+`uploads/12.csv`, `files/12.duckdb` or `rest/<version>-<hash>/<timestamp>.duckdb` — never filesystem paths. The
+database stores keys too, so switching backends is configuration only.
+
+| | `STORAGE_BACKEND=local` (default) | `STORAGE_BACKEND=s3` |
+|---|---|---|
+| Where files live | `STORAGE_DIR` on a filesystem every API and worker process mounts | `s3://S3_BUCKET/S3_PREFIX/<key>` |
+| Local disk needed | The shared volume | Scratch + cache only (`STORAGE_DIR`, sized by `STORAGE_CACHE_MAX_MB`, default 5000) |
+| Reads | The file directly | First read downloads to the process's cache; later reads use the cached copy |
+| Settings | `STORAGE_DIR` | `S3_BUCKET`, `S3_PREFIX` (default `spendboard`), `S3_REGION`, `S3_ENDPOINT_URL` (MinIO, R2, …), credentials from the standard AWS chain (IAM role, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, profile) |
+
+Why queries still use a local copy: DuckDB runs with external access disabled so user SQL can never reach the
+filesystem or network — which also stops it reading S3 itself. Keys are **write-once** (a REST refresh writes a new
+key and moves a pointer in Redis), so a cached copy can never be stale and workers need no coordination.
+
+**Moving an existing install from local to S3**
+
+1. Upgrade (migration `0004` rewrites any old absolute paths in `file_objects` to keys).
+2. Copy the files: `aws s3 sync $STORAGE_DIR/uploads s3://BUCKET/PREFIX/uploads` and the same for `files`.
+   (`rest/` is not needed — extracts are rebuilt on first use.)
+3. Set `STORAGE_BACKEND=s3` and the `S3_*` settings on api, worker and scheduler; restart.
+
+## 4b. The job queue: Celery and alternatives
+
+Card queries are handed to workers in exactly one place, `backend/app/execution/queue.py` (`submit` on the
+producer side, `handle` on the consumer side). Caching, single-flight locks and result delivery (Redis pub/sub)
+don't depend on the queue. A job is a self-contained JSON payload and duplicates are harmless (they recompute the
+same cache entry), so any at-least-once queue works.
+
+| Option | Change needed | Verdict |
+|---|---|---|
+| Celery on Redis (default) | — | Right for this workload |
+| Celery on **RabbitMQ** or **SQS** | `CELERY_BROKER_URL=amqp://…` or `sqs://…` (plus `pip install celery[sqs]`) | Easiest upgrade if you want a dedicated, durable broker |
+| Redis Streams / SQS / Pub/Sub with a small asyncio consumer | New backend in `queue.py` + a consumer that calls `handle()` | Fewer moving parts than Celery; worth it only if Celery becomes a pain |
+| **Kafka** | New backend + consumer | **Not recommended as the job queue** (see below) |
+
+**Why not Kafka for the jobs.** These are short, interactive tasks: one dashboard view fans out ~10 queries that
+must start within milliseconds, some take 50 ms and some take 30 s, and any free worker should pick up the next
+one. That is a *work queue*. Kafka is a *log*: work is split by partition, a slow query blocks everything behind it
+in its partition (head-of-line blocking), consumer counts are capped by partition count, there are no per-message
+acks, retries or priorities, and rebalancing pauses consumption when workers scale. Kafka 4.x "share groups"
+(queues for Kafka) narrow the gap but are new. It would also add a heavyweight cluster to operate.
+
+**Where Kafka would make sense** is alongside the queue, as an event backbone: publishing `version.published`,
+`change_request.merged`, `data_source.refreshed` or audit events for other systems (search indexing, notifications,
+a data catalogue, cache invalidation from upstream data loads). That is additive and needs no change to execution.
 
 ## 5. Install with Docker (recommended)
 
@@ -206,7 +258,9 @@ Map each component to a deployment:
 | scheduler | backend | `celery -A app.worker.celery_app beat --schedule /tmp/celerybeat-schedule` | **1** | process liveness |
 | migrate (Job) | backend | `alembic upgrade head` | run once per release, before api | — |
 
-- Mount the same `STORAGE_DIR` volume (ReadWriteMany) into api and worker pods.
+- With `STORAGE_BACKEND=local`, mount the same `STORAGE_DIR` volume (ReadWriteMany) into api and worker pods.
+  With `STORAGE_BACKEND=s3`, give each pod an `emptyDir` (or local SSD) at `STORAGE_DIR` and an IAM role / service
+  account with `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on the bucket prefix — no shared volume needed.
 - Give api, worker and scheduler the same environment (a shared ConfigMap + Secret).
 - To isolate background work, run a second worker deployment with `-Q refresh` and the main one with `-Q interactive`.
 
@@ -317,7 +371,8 @@ location / {
   manager, backed up. Losing or changing it makes stored data-source credentials unreadable.
 - [ ] `ALLOW_PRIVATE_NETWORK_SOURCES=false`; `BIGQUERY_EMULATOR_HOST` unset; no demo seed.
 - [ ] **Scheduler**: exactly one instance.
-- [ ] **Shared storage** mounted at the same `STORAGE_DIR` for api and all workers; backed up.
+- [ ] **File storage**: either a shared `STORAGE_DIR` mounted on api and all workers and backed up, or
+  `STORAGE_BACKEND=s3` with bucket versioning/backups and a lifecycle rule only on `…/rest/` (old extracts).
 - [ ] **Postgres**: backups of the `spendboard` database (versions, credentials, audit log live there). Size
   `max_connections` for (api processes + worker processes) × (`DB_POOL_SIZE` + `DB_MAX_OVERFLOW`).
 - [ ] **Redis**: losing it only loses cached results and queued jobs (they are recomputed). For large caches set

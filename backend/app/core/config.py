@@ -29,8 +29,18 @@ class Settings(BaseSettings):
     # Fernet key for data-source credentials. The default is for local development only —
     # set SECRET_KEY in every shared environment (generate with cryptography.fernet.Fernet.generate_key()).
     secret_key: str = "spendboard-dev-only-key-change-me-in-any-shared-env="
-    # Uploaded files, Parquet/DuckDB extracts (local disk now; object storage later)
+    # Uploaded files and DuckDB extracts (see app/core/storage.py).
+    #   local : files under STORAGE_DIR — every API and worker process must share this directory
+    #   s3    : objects in S3_BUCKET (or any S3-compatible store); STORAGE_DIR is then only a local
+    #           per-process cache and scratch space. Credentials come from the standard AWS chain.
+    storage_backend: str = "local"
     storage_dir: str = "storage"
+    s3_bucket: str = ""
+    s3_prefix: str = "spendboard"
+    s3_endpoint_url: str | None = None   # MinIO, Cloudflare R2, a test emulator…
+    s3_region: str | None = None
+    # S3 only: per-process cache of downloaded files; least-recently-used files are evicted beyond this
+    storage_cache_max_mb: int = 5000
     max_upload_mb: int = 50
     # Whether non-admins may point sources at private/loopback addresses (SSRF guard). On for local dev.
     allow_private_network_sources: bool = False
@@ -42,6 +52,9 @@ class Settings(BaseSettings):
     # Execution: "celery" runs card queries on workers; "inline" runs them in the API process
     # (tests, single-process demos). Caching and single-flight behave the same either way.
     execution_mode: str = "celery"
+    # Celery's broker. Defaults to REDIS_URL; point it at RabbitMQ (amqp://…) or SQS (sqs://…) to move
+    # the job queue off Redis without touching the cache.
+    celery_broker_url: str | None = None
     # Cached results are served past their TTL (marked stale, refreshed in the background) for this long
     stale_grace_s: int = 6 * 3600
     # How long a request waits for a result being computed elsewhere

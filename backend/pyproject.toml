@@ -23,6 +23,7 @@ dependencies = [
   "celery[redis]>=5.4",
   "openai>=1.60",
   "google-cloud-bigquery>=3.27",
+  "boto3>=1.35",
 ]
 
 [dependency-groups]
@@ -31,6 +32,7 @@ dev = [
   "pytest-asyncio>=0.24",
   "cryptography>=43",
   "locust>=2.32",
+  "moto[server]>=5.0",
 ]
 
 [tool.pytest.ini_options]

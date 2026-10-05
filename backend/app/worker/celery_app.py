@@ -22,7 +22,7 @@ from app.core.config import get_settings
 if sys.platform == "darwin":
     billiard.set_start_method("fork", force=True)
 
-celery = Celery("spendboard", broker=get_settings().redis_url)
+celery = Celery("spendboard", broker=get_settings().celery_broker_url or get_settings().redis_url)
 celery.conf.update(
     task_default_queue="interactive",
     task_routes={"spendboard.refresh_rest": {"queue": "refresh"}, "spendboard.warm_dashboards": {"queue": "refresh"}},
@@ -55,8 +55,8 @@ def run(coro):
 
 @celery.task(name="spendboard.run_card")
 def run_card_task(job: dict[str, Any]) -> None:
-    from app.execution.jobs import Job, compute
-    run(compute(Job(**job)))
+    from app.execution.queue import handle
+    run(handle("run_card", job))
 
 
 @celery.task(name="spendboard.refresh_rest")

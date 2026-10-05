@@ -113,7 +113,7 @@ def ingest(raw_path: Path, fmt: str, db_path: Path, table: str) -> list[dict[str
                 con.unregister("_sheet")
 
     try:
-        duck.replace_database(db_path, build)
+        duck.build_database(db_path, build)
     except QueryError:
         raise
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:

@@ -1,11 +1,13 @@
 """One interface over every source type, so cards, filters and (later) LLM tools stay source-agnostic."""
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 from app.connectors import bigquery, duck, postgres, rest
 from app.connectors.common import QueryError
 from app.core.db import SessionLocal
+from app.core.storage import StorageError, get_storage
 from app.governance.specs import DataSourceSpec
 from app.models import FileObject
 
@@ -18,7 +20,10 @@ async def _duck_path(spec: DataSourceSpec, version_id: int | None) -> Path:
             file = await session.get(FileObject, spec.file.file_id)
         if file is None:
             raise QueryError("The uploaded file for this source no longer exists.")
-        return Path(file.db_key)
+        try:
+            return await asyncio.to_thread(get_storage().local_path, file.db_key)
+        except StorageError as exc:
+            raise QueryError("The uploaded file's data is missing from storage.") from exc
     if version_id is None:
         raise QueryError("REST sources are queried through a saved data-source version.")
     return await rest.extract_path(spec, version_id)
@@ -39,7 +44,6 @@ async def introspect(spec: DataSourceSpec, *, version_id: int | None = None) -> 
         return await postgres.introspect(spec)
     if spec.type == "bigquery":
         return await bigquery.introspect(spec)
-    import asyncio
     return await asyncio.to_thread(duck.describe, await _duck_path(spec, version_id))
 
 

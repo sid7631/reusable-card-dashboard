@@ -1,12 +1,12 @@
 """DuckDB engine for file uploads and REST extracts.
 
-Each source's data lives in its own DuckDB database file. Queries open it read-only with external
+Each source's data lives in its own DuckDB database file, kept in storage (app/core/storage.py) and
+opened from a local path — the file itself, or a worker's cached copy of an S3 object. Queries open it read-only with external
 access disabled, so user SQL can only see that source's tables — not the filesystem or the network.
 """
 
 import asyncio
 import re
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +14,6 @@ import duckdb
 
 from app.connectors.common import QueryError, jsonable
 from app.core.config import get_settings
-
-
-def storage(*parts: str) -> Path:
-    path = Path(get_settings().storage_dir).resolve().joinpath(*parts)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
 
 
 def safe_table_name(raw: str, fallback: str = "data") -> str:
@@ -82,19 +76,12 @@ def describe(db_path: Path) -> list[dict[str, Any]]:
         con.close()
 
 
-_write_locks: dict[str, threading.Lock] = {}
-
-
-def replace_database(db_path: Path, build) -> None:
-    """Build into a temp file and swap it in atomically, so readers never see a half-written extract."""
-    lock = _write_locks.setdefault(str(db_path), threading.Lock())
-    with lock:
-        tmp = db_path.with_suffix(".tmp.duckdb")
-        tmp.unlink(missing_ok=True)
-        con = duckdb.connect(str(tmp))
-        try:
-            build(con)
-            con.execute("CHECKPOINT")
-        finally:
-            con.close()
-        tmp.replace(db_path)
+def build_database(db_path: Path, build) -> None:
+    """Create a new DuckDB file at `db_path` (a fresh scratch path); the caller stores it under a key."""
+    db_path.unlink(missing_ok=True)
+    con = duckdb.connect(str(db_path))
+    try:
+        build(con)
+        con.execute("CHECKPOINT")
+    finally:
+        con.close()

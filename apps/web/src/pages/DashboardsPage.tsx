@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useDashboards } from '../lib/queries';
 import type { Dashboard } from '../lib/types';
 import Modal from '../components/Modal';
 import AssetBadges from '../components/AssetBadges';
@@ -9,15 +10,13 @@ type Tab = 'all' | 'global' | 'private' | 'shared';
 const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global library'], ['private', 'My dashboards'], ['shared', 'Shared with me']];
 
 export default function DashboardsPage() {
-  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<Tab>('all');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const navigate = useNavigate();
 
-  const load = () => api.dashboards(tab === 'all' ? undefined : tab).then(setDashboards).catch(console.error);
-  useEffect(() => { load(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data: dashboards, isPending } = useDashboards(tab === 'all' ? undefined : tab);
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +27,6 @@ export default function DashboardsPage() {
   const remove = async (d: Dashboard) => {
     if (!confirm(`Delete dashboard “${d.name}”? Cards stay in the library.`)) return;
     await api.deleteDashboard(d.id);
-    load();
   };
 
   return (
@@ -57,7 +55,7 @@ export default function DashboardsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {dashboards.map((d, i) => (
+        {dashboards?.map((d, i) => (
           <Link
             key={d.id}
             to={`/dashboards/${d.id}`}
@@ -84,7 +82,8 @@ export default function DashboardsPage() {
             </div>
           </Link>
         ))}
-        {!dashboards.length && (
+        {isPending && <div className="col-span-full flex justify-center py-12"><div className="size-5 animate-spin rounded-full border-2 border-line border-t-accent" /></div>}
+        {dashboards && !dashboards.length && (
           <div className="col-span-full rounded-2xl border border-dashed border-line bg-white/50 p-12 text-center text-sm text-ink-faint">
             {tab === 'shared' ? 'Nothing has been shared with you yet.' : 'No dashboards here yet — create one and start adding cards.'}
           </div>

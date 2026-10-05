@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Card, Row } from '../lib/types';
 import { previewSql } from '../lib/builder';
-import { api } from '../lib/api';
+import { useCompiledSql } from '../lib/queries';
 import Modal from './Modal';
 
 /** Widget context auto-passed into every action panel (segment, period, filters). */
@@ -130,11 +130,9 @@ export function ExportModal({ card, rows, context, onClose }: { card: Card; rows
 export function SqlModal({ card, context, onClose }: { card: Card; context: CardContext; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   // Semantic cards have no stored SQL — compile the editable form for display
-  const [sql, setSql] = useState(card.query?.mode === 'semantic' ? 'Compiling…' : card.sql_text);
-  useEffect(() => {
-    if (card.query?.mode !== 'semantic') return;
-    api.semanticCompile(card.data_source_id, card.query).then((r) => setSql(r.sql)).catch((e) => setSql(`-- ${e.message}`));
-  }, [card]);
+  const semantic = card.query?.mode === 'semantic' ? card.query : undefined;
+  const compiled = useCompiledSql(card.data_source_id, semantic, Boolean(semantic));
+  const sql = !semantic ? card.sql_text : compiled.error ? `-- ${compiled.error.message}` : compiled.data?.sql ?? 'Compiling…';
   return (
     <Modal title="View SQL Script" subtitle="Triggered from widget card — {{filters}} resolves to the parameters below." onClose={onClose} wide>
       <div className="space-y-4">

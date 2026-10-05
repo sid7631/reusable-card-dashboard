@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useRaiseGridItem } from '../lib/useRaiseGridItem';
 import { schemeColors } from '../lib/format';
+import { useFilterOptions } from '../lib/queries';
 
 interface Props {
   label: string;
   value: string[];
   onChange: (values: string[]) => void;
-  /** Loads the options; called when the menu opens and whenever `loadKey` changes while open. */
+  /** Loads the options when the menu opens; cached per `optionsKey` (the filter and its parent selections). */
   load: () => Promise<string[]>;
-  loadKey: string;
+  optionsKey: readonly unknown[];
   multi?: boolean;
   compact?: boolean;
   disabled?: boolean;
@@ -20,16 +21,14 @@ interface Props {
 }
 
 /** Dropdown chip for one dimension filter. Empty selection = all values. */
-export default function FilterSelect({ label, value, onChange, load, loadKey, multi = false, compact = false,
+export default function FilterSelect({ label, value, onChange, load, optionsKey, multi = false, compact = false,
   disabled = false, title, allowed, scheme }: Props) {
   const colors = schemeColors(scheme);
   const vars = (scheme
     ? { '--cs-a': colors[0], '--cs-s': colors[0] + '1a' }
     : { '--cs-a': 'var(--color-accent)', '--cs-s': 'var(--color-accent-soft)' }) as CSSProperties;
   const [open, setOpen] = useState(false);
-  const [options, setOptions] = useState<string[]>();
   const [query, setQuery] = useState('');
-  const [error, setError] = useState<string>();
   const ref = useRef<HTMLDivElement>(null);
   useRaiseGridItem(open, ref);
 
@@ -39,14 +38,9 @@ export default function FilterSelect({ label, value, onChange, load, loadKey, mu
     return () => window.removeEventListener('mousedown', onClick);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    let alive = true;
-    setOptions(undefined);
-    setError(undefined);
-    load().then((o) => alive && setOptions(o)).catch((e) => alive && setError(e.message));
-    return () => { alive = false; };
-  }, [open, loadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const optionsQuery = useFilterOptions(optionsKey, load, open);
+  const options = optionsQuery.data;
+  const error = optionsQuery.error?.message;
 
   const visible = (options ?? [])
     .filter((o) => !allowed?.length || allowed.includes(o))

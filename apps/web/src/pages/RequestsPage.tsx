@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../lib/api';
+import { useChangeRequests } from '../lib/queries';
 import { useAuth } from '../lib/auth';
 import { timeAgo } from '../lib/format';
-import type { ChangeRequestSummary, RequestStatus } from '../lib/types';
+import type { RequestStatus } from '../lib/types';
 import RequestStatusChip from '../components/RequestStatus';
 
 const TABS: [RequestStatus | 'all', string][] = [
@@ -16,12 +16,7 @@ export default function RequestsPage() {
   const { user } = useAuth();
   const admin = user.role === 'admin';
   const [tab, setTab] = useState<RequestStatus | 'all'>('pending');
-  const [requests, setRequests] = useState<ChangeRequestSummary[]>();
-
-  useEffect(() => {
-    setRequests(undefined);
-    api.changeRequests(tab).then(setRequests).catch(console.error);
-  }, [tab]);
+  const { data: requests } = useChangeRequests(tab);
 
   return (
     <div className="px-10 py-8">

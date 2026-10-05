@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, type AssistantAction, type AssistantAsk, type AssistantConfig, type AssistantReply } from '../lib/api';
+import { api, type AssistantAction, type AssistantAsk, type AssistantReply } from '../lib/api';
+import { useAssistantConfig } from '../lib/queries';
 import type { AppliedFilters, DashboardItem } from '../lib/types';
 
 const SUGGESTIONS = [
@@ -44,13 +45,12 @@ export default function AssistantWidget({ dashboardId, dashboardName, items, app
   onApplyFilter: (filterId: string, values: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [config, setConfig] = useState<AssistantConfig>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { if (open && !config) api.assistantConfig().then(setConfig).catch(() => undefined); }, [open, config]);
+  const config = useAssistantConfig(open).data;
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../lib/api';
-import type { AssetKind, RebasePreview } from '../lib/types';
+import { useRebasePreview } from '../lib/queries';
+import type { AssetKind } from '../lib/types';
 import Modal from './Modal';
 import DiffList from './DiffList';
 
@@ -13,23 +14,23 @@ function show(value: unknown): string {
 export default function RebaseDialog({ kind, assetId, onClose, onApplied }: {
   kind: AssetKind; assetId: number; onClose: () => void; onApplied: () => void;
 }) {
-  const [preview, setPreview] = useState<RebasePreview>();
+  const previewQuery = useRebasePreview(kind, assetId);
+  const preview = previewQuery.data;
   const [choices, setChoices] = useState<Record<string, 'ours' | 'theirs'>>({});
-  const [error, setError] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
   const [applying, setApplying] = useState(false);
-
-  useEffect(() => { api.rebasePreview(kind, assetId).then(setPreview).catch((e) => setError(e.message)); }, [kind, assetId]);
+  const error = actionError ?? previewQuery.error?.message;
 
   const unresolved = preview?.conflicts.filter((c) => !choices[c.path]).length ?? 0;
 
   const apply = async () => {
     setApplying(true);
-    setError(undefined);
+    setActionError(undefined);
     try {
       await api.rebase(kind, assetId, choices);
       onApplied();
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
       setApplying(false);
     }
   };

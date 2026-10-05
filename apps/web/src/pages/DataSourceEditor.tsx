@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import type { DataSource, DataSourceSpec, Row, SemanticModel, SourceType, TableInfo } from '../lib/types';
+import { useDataSource } from '../lib/queries';
+import type { DataSourceSpec, Row, SemanticModel, SourceType, TableInfo } from '../lib/types';
 import AssetBadges from '../components/AssetBadges';
 import GovernanceBar from '../components/GovernanceBar';
 import ModelEditor from '../components/ModelEditor';
@@ -54,7 +55,8 @@ export default function DataSourceEditor() {
   const editing = Boolean(id);
   const { user } = useAuth();
 
-  const [source, setSource] = useState<DataSource>();
+  const sourceQuery = useDataSource(id, { editor: true });
+  const source = sourceQuery.data;
   const [spec, setSpec] = useState<DataSourceSpec>();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -68,7 +70,6 @@ export default function DataSourceEditor() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const [dialog, setDialog] = useState<'history' | 'share' | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
 
   const canEdit = !editing || Boolean(source?.can_edit);
 
@@ -88,17 +89,20 @@ export default function DataSourceEditor() {
     }
   }, []);
 
+  // Fill the form once per version: refetches never overwrite edits in progress, while a save,
+  // restore or update from global (each a new version) refills it
+  const seeded = useRef<string>();
+  useEffect(() => { if (sourceQuery.isError) navigate('/data-sources'); }, [sourceQuery.isError, navigate]);
   useEffect(() => {
-    if (!id) return;
-    api.dataSource(id).then((s) => {
-      setSource(s);
-      setSpec(s.spec);
-      setName(s.name);
-      setDescription(s.description);
-      setSecret('');
-      runTest(s.spec, { sourceId: s.id });
-    }).catch(() => navigate('/data-sources'));
-  }, [id, navigate, runTest, reloadKey]);
+    const s = sourceQuery.data;
+    if (!s || seeded.current === `${s.id}:${s.version_no}`) return;
+    seeded.current = `${s.id}:${s.version_no}`;
+    setSpec(s.spec);
+    setName(s.name);
+    setDescription(s.description);
+    setSecret('');
+    runTest(s.spec, { sourceId: s.id });
+  }, [sourceQuery.data, runTest]);
 
   const patch = (fn: (s: DataSourceSpec) => DataSourceSpec) => setSpec((s) => s && fn(s));
 
@@ -128,7 +132,6 @@ export default function DataSourceEditor() {
       if (editing) {
         await api.updateDataSource(source!.id, payload);
         setChangeNote('');
-        setReloadKey((k) => k + 1);
       } else {
         const created = await api.createDataSource(payload);
         navigate(`/data-sources/${created.id}`);
@@ -180,7 +183,7 @@ export default function DataSourceEditor() {
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-ink">{editing ? name || 'Data source' : `New ${SOURCE_TYPE_LABEL[spec.type]} source`}</h1>
             {source && <AssetBadges asset={source} />}
           </div>
-          {source && <div className="mt-2"><GovernanceBar kind="data-sources" asset={source} onChanged={() => setReloadKey((k) => k + 1)} /></div>}
+          {source && <div className="mt-2"><GovernanceBar kind="data-sources" asset={source} /></div>}
         </div>
         {source && (
           <div className="flex gap-2">
@@ -384,7 +387,7 @@ export default function DataSourceEditor() {
 
       {dialog === 'history' && source && (
         <VersionHistory kind="data-sources" assetId={source.id} assetName={source.name} canEdit={source.can_edit}
-          onClose={() => setDialog(null)} onRestored={() => setReloadKey((k) => k + 1)} />
+          onClose={() => setDialog(null)} />
       )}
       {dialog === 'share' && source && <ShareDialog kind="data-sources" assetId={source.id} assetName={source.name} onClose={() => setDialog(null)} />}
     </div>

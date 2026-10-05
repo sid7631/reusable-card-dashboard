@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { api } from '../lib/api';
-import { TEMPORAL_TYPES, type Card, type CardConfig, type CardFilter, type ChartType, type Dataset, type Row } from '../lib/types';
+import { useCard, useDatasets } from '../lib/queries';
+import { TEMPORAL_TYPES, type CardConfig, type CardFilter, type ChartType, type Dataset, type Row } from '../lib/types';
 import { SCHEMES } from '../lib/format';
 import { copilotRespond, toSemanticQuery } from '../lib/builder';
 import ChartRenderer from '../components/ChartRenderer';
@@ -32,6 +33,8 @@ interface ChatMsg {
 const field = 'w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20';
 const label = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft';
 
+const EMPTY_DATASETS: Dataset[] = [];
+
 export default function CardStudio() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -42,7 +45,7 @@ export default function CardStudio() {
   const [config, setConfig] = useState<CardConfig>({ dimension: 'industry', metric: 'amount', agg: 'SUM', filters: [] });
   // Raw SQL in SQL mode; the compiled semantic query (read-only) in builder / copilot modes
   const [sqlText, setSqlText] = useState('');
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const datasets = useDatasets().data ?? EMPTY_DATASETS;
   const [sourceId, setSourceId] = useState<number>();
   const dataset = datasets.find((d) => d.id === sourceId) ?? null;
 
@@ -77,18 +80,15 @@ export default function CardStudio() {
   const [saveError, setSaveError] = useState<string>();
   const [changeNote, setChangeNote] = useState('');
   // Global cards are read-only for non-admins (fork + propose arrives with the approval flow)
-  const [canEdit, setCanEdit] = useState(true);
-  const [card, setCard] = useState<Card>();
-  const [versionNo, setVersionNo] = useState<number>();
+  const cardQuery = useCard(id, { editor: true });
+  const card = cardQuery.data;
+  const canEdit = card?.can_edit ?? true;
+  const versionNo = card?.version_no;
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    api.datasets().then((d) => {
-      setDatasets(d);
-      setSourceId((cur) => cur ?? d.find((x) => !x.error)?.id);
-    }).catch(console.error);
-  }, []);
+    setSourceId((cur) => cur ?? datasets.find((x) => !x.error)?.id);
+  }, [datasets]);
 
   const chooseSource = (id: number) => setSourceId(id);
 
@@ -114,10 +114,15 @@ export default function CardStudio() {
     });
   }, [dataset, mode, dimensionIds, numericKey, measureIds, timeColumn]);
 
-  // Load existing card when editing
+  // Fill the form from the card — once per version, so a refetch never overwrites edits in progress
+  // (a restore or an update from global creates a new version and refills it)
+  const seeded = useRef<string>();
+  useEffect(() => { if (cardQuery.isError) navigate('/cards'); }, [cardQuery.isError, navigate]);
   useEffect(() => {
-    if (!id) return;
-    api.card(id).then((c) => {
+    const c = cardQuery.data;
+    if (!c || seeded.current === `${c.id}:${c.version_no}`) return;
+    seeded.current = `${c.id}:${c.version_no}`;
+    {
       // Older builder cards stored SQL; they open in the builder and save back as semantic queries
       setMode(c.query.mode === 'sql' && c.created_via !== 'builder' ? 'sql' : c.created_via === 'sql' ? 'sql' : c.created_via);
       setChartType(c.chart_type);
@@ -130,12 +135,9 @@ export default function CardStudio() {
       setSqlText(c.sql_text);
       setName(c.name);
       setDescription(c.description);
-      setCanEdit(c.can_edit);
       setSourceId(c.data_source_id);
-      setCard(c);
-      setVersionNo(c.version_no);
-    }).catch(() => navigate('/cards'));
-  }, [id, navigate, reloadKey]);
+    }
+  }, [cardQuery.data]);
 
   const dataSourceId = dataset?.id;
   const runPreview = useCallback(async (sql: string) => {
@@ -375,7 +377,7 @@ export default function CardStudio() {
               {' '}· <span className="font-mono">{dataset?.name ?? '…'}</span>
               {dataset ? ` · ${dataset.rowCount.toLocaleString()} rows · ${{ postgres: 'Postgres', bigquery: 'BigQuery', rest: 'REST extract', file: 'File extract' }[dataset.type]}` : ''}
             </p>
-            {card && <div className="mt-2"><GovernanceBar kind="cards" asset={card} onChanged={() => setReloadKey((k) => k + 1)} /></div>}
+            {card && <div className="mt-2"><GovernanceBar kind="cards" asset={card} /></div>}
           </div>
         </div>
         {!canEdit && card?.scope !== 'global' && (
@@ -677,7 +679,7 @@ export default function CardStudio() {
 
       {historyOpen && id && (
         <VersionHistory kind="cards" assetId={Number(id)} assetName={name} canEdit={canEdit}
-          onClose={() => setHistoryOpen(false)} onRestored={() => setReloadKey((k) => k + 1)} />
+          onClose={() => setHistoryOpen(false)} />
       )}
 
       {saveOpen && (

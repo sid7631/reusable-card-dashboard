@@ -19,7 +19,7 @@ const action = 'whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font
  * global → "Edit a copy"; private copy → lineage, "Update from global", "Propose changes";
  * new private asset → "Request publish"; anything in review → link to the request.
  */
-export default function GovernanceBar({ kind, asset, onChanged }: { kind: AssetKind; asset: AssetMeta; onChanged: () => void }) {
+export default function GovernanceBar({ kind, asset, onChanged }: { kind: AssetKind; asset: AssetMeta; onChanged?: () => void }) {
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<'submit' | 'rebase' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,7 +76,7 @@ export default function GovernanceBar({ kind, asset, onChanged }: { kind: AssetK
 
       {dialog === 'submit' && <SubmitDialog kind={kind} asset={asset} onClose={() => setDialog(null)} />}
       {dialog === 'rebase' && (
-        <RebaseDialog kind={kind} assetId={asset.id} onClose={() => setDialog(null)} onApplied={() => { setDialog(null); onChanged(); }} />
+        <RebaseDialog kind={kind} assetId={asset.id} onClose={() => setDialog(null)} onApplied={() => { setDialog(null); onChanged?.(); }} />
       )}
     </div>
   );

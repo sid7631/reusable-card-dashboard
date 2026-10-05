@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../lib/api';
+import { useDataSources } from '../lib/queries';
 import { timeAgo } from '../lib/format';
-import type { DataSource } from '../lib/types';
 import AssetBadges from '../components/AssetBadges';
 
 type Tab = 'all' | 'global' | 'private' | 'shared';
@@ -11,12 +10,7 @@ export const SOURCE_TYPE_LABEL = { postgres: 'Postgres', rest: 'REST API', file:
 
 export default function DataSourcesPage() {
   const [tab, setTab] = useState<Tab>('all');
-  const [sources, setSources] = useState<DataSource[]>();
-
-  useEffect(() => {
-    setSources(undefined);
-    api.dataSources(tab === 'all' ? undefined : tab).then(setSources).catch(console.error);
-  }, [tab]);
+  const { data: sources } = useDataSources(tab === 'all' ? undefined : tab);
 
   return (
     <div className="px-10 py-8">

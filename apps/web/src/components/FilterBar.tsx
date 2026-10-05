@@ -25,7 +25,7 @@ export default function FilterBar({ dashboardId, defs, values, period, onValues,
           <FilterSelect key={def.id} label={def.label || def.dimension} multi={def.kind === 'multi'}
             value={values[def.id] ?? []} onChange={(v) => onValues(setFilter(defs, values, def.id, v))}
             load={() => api.dashboardFilterOptions(dashboardId, def.id, selections).then((r) => r.values)}
-            loadKey={JSON.stringify(selections)}
+            optionsKey={['dashboard', dashboardId, def.id, def.dimension, selections]}
             title={def.locked ? 'Locked — cards on this dashboard cannot override it' : undefined} />
         );
       })}

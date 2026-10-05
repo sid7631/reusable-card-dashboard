@@ -53,7 +53,7 @@ This stack is for testing only: it uses demo passwords and allows connections to
 
 | Layer | Tech |
 | --- | --- |
-| Web | React 18 + TypeScript (Vite), Tailwind v4, Recharts, react-grid-layout, Monaco |
+| Web | React 18 + TypeScript (Vite), Tailwind v4, Recharts, react-grid-layout, Monaco. Server state in TanStack Query (`src/lib/queries.ts`; any write refreshes what is on screen); dashboard editing in a reducer (`src/lib/dashboardEditor.ts`) |
 | Auth (simulated SSO) | Node service in the web deployment — issues RS256 JWTs, publishes JWKS |
 | API | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, SQLGlot |
 | Metadata | Postgres 16 |

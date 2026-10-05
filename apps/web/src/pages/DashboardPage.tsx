@@ -1,13 +1,15 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useReducer, useState } from 'react';
 import { createRenderBatcher, RenderContext } from '../lib/render';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout';
 import { api } from '../lib/api';
-import type { AppliedFilters, Card, CardData, ChartType, DashboardDetail, DashboardFilterDef, DashboardItem } from '../lib/types';
-import { cardControlDims, dimensionLabel, initialValues, setFilter, summarize, toApplied, type FilterValues } from '../lib/filters';
+import { keys, queryClient, useCards, useDashboard } from '../lib/queries';
+import { dashboardEditor, initialDashboardEditor } from '../lib/dashboardEditor';
+import type { AppliedFilters, CardData, DashboardDetail, DashboardFilterDef, DashboardItem } from '../lib/types';
+import { cardControlDims, dimensionLabel, setFilter, summarize, toApplied } from '../lib/filters';
 import ChartRenderer from '../components/ChartRenderer';
 import CardFrame from '../components/CardFrame';
-import PeriodSelect, { periodFromPreset, type Period } from '../components/PeriodSelect';
+import PeriodSelect, { type Period } from '../components/PeriodSelect';
 import FilterSelect from '../components/FilterSelect';
 import FilterBar from '../components/FilterBar';
 import DashboardFilterEditor from '../components/DashboardFilterEditor';
@@ -19,10 +21,6 @@ import ShareDialog from '../components/ShareDialog';
 import GovernanceBar from '../components/GovernanceBar';
 
 const Grid = WidthProvider(RGL);
-
-const DEFAULT_SIZE: Partial<Record<ChartType, { w: number; h: number }>> = {
-  kpi: { w: 3, h: 2 },
-};
 
 function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onRemove }: {
   card: DashboardItem;
@@ -105,7 +103,7 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
               multi={def ? def.kind === 'multi' : i > 0} value={effDims[dim] ?? []} onChange={(v) => setOverride(dim, v)}
               allowed={dim === 'segment' ? controls_?.segmentOptions?.filter((o) => o !== 'ALL') : undefined}
               load={() => api.cardFilterOptions(card.id, dim, narrowing, { versionId: card.card_version_id, dashboardId }).then((r) => r.values)}
-              loadKey={JSON.stringify(narrowing)}
+              optionsKey={['card', card.id, card.card_version_id, dashboardId, dim, narrowing]}
               disabled={lockedDims.has(dim)} title={lockedDims.has(dim) ? 'Locked by the dashboard' : undefined} />
           );
         })}
@@ -140,77 +138,37 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
 export default function DashboardPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [dashboard, setDashboard] = useState<DashboardDetail | null>(null);
-  const [items, setItems] = useState<DashboardItem[]>([]);
-  const [filterValues, setFilterValues] = useState<FilterValues>({});
-  const [period, setPeriod] = useState<Period | null>(null);
+  const dashboardQuery = useDashboard(id);
+  const [state, dispatch] = useReducer(dashboardEditor, initialDashboardEditor);
+  const { dashboard, items, dirty, editMode, filterValues, period } = state;
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [library, setLibrary] = useState<Card[]>([]);
-  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState<'history' | 'share' | null>(null);
+  const library = useCards(undefined, drawerOpen).data ?? [];
   const batcher = useMemo(() => (id ? createRenderBatcher(Number(id)) : null), [id]);
 
-  // Filter state starts from the dashboard's defaults
-  const resetFilters = (d: DashboardDetail) => {
-    setFilterValues(initialValues(d.filters));
-    const p = d.filters.find((f) => f.kind === 'period');
-    setPeriod(p ? periodFromPreset(p.default[0]) : null);
+  useEffect(() => { if (dashboardQuery.data) dispatch({ type: 'loaded', dashboard: dashboardQuery.data }); }, [dashboardQuery.data]);
+  useEffect(() => { if (dashboardQuery.isError) navigate('/dashboards'); }, [dashboardQuery.isError, navigate]);
+
+  /** A write returned the new dashboard: show it now (the cache refresh that follows agrees). */
+  const saved = (d: DashboardDetail) => {
+    queryClient.setQueryData(keys.dashboard(id!), d);
+    dispatch({ type: 'saved', dashboard: d });
   };
-
-  const loadDashboard = useCallback(() => {
-    api.dashboard(id!)
-      .then((d) => { setDashboard(d); setItems(d.items); setDirty(false); resetFilters(d); })
-      .catch(() => navigate('/dashboards'));
-  }, [id, navigate]);
-  useEffect(() => { loadDashboard(); }, [loadDashboard]);
-
-  useEffect(() => {
-    if (drawerOpen) api.cards().then(setLibrary).catch(console.error);
-  }, [drawerOpen]);
 
   const layout: Layout[] = useMemo(
     () => items.map((it) => ({ i: String(it.id), x: it.x, y: it.y, w: it.w, h: it.h, minW: 2, minH: 2 })),
     [items],
   );
 
-  const onLayoutChange = useCallback((next: Layout[]) => {
-    if (!editMode) return;
-    setItems((prev) => {
-      let changed = false;
-      const updated = prev.map((it) => {
-        const l = next.find((n) => n.i === String(it.id));
-        if (!l) return it;
-        if (l.x !== it.x || l.y !== it.y || l.w !== it.w || l.h !== it.h) changed = true;
-        return { ...it, x: l.x, y: l.y, w: l.w, h: l.h };
-      });
-      if (changed) setDirty(true);
-      return changed ? updated : prev;
-    });
-  }, [editMode]);
-
-  const addCard = (card: Card) => {
-    const size = DEFAULT_SIZE[card.chart_type] ?? { w: 4, h: 4 };
-    const bottom = items.reduce((m, it) => Math.max(m, it.y + it.h), 0);
-    setItems((prev) => [...prev, { ...card, x: 0, y: bottom, ...size }]);
-    setDirty(true);
-  };
-
-  const removeCard = (cardId: number) => {
-    setItems((prev) => prev.filter((it) => it.id !== cardId));
-    setDirty(true);
-  };
+  const onLayoutChange = useCallback((next: Layout[]) => dispatch({ type: 'layoutChanged', layout: next }), []);
 
   const save = async () => {
     setSaving(true);
     try {
       // Existing placements keep their pinned card version; new ones pin the card's latest version
-      const saved = await api.saveDashboardItems(id!, items.map((it) => ({ item_id: it.item_id, card_id: it.id, x: it.x, y: it.y, w: it.w, h: it.h })));
-      setDashboard(saved);
-      setItems(saved.items);
-      setDirty(false);
+      saved(await api.saveDashboardItems(id!, items.map((it) => ({ item_id: it.item_id, card_id: it.id, x: it.x, y: it.y, w: it.w, h: it.h }))));
     } finally {
       setSaving(false);
     }
@@ -218,9 +176,7 @@ export default function DashboardPage() {
 
   const applyUpdates = async () => {
     try {
-      const updated = await api.applyUpdates(dashboard!.id);
-      setDashboard(updated);
-      setItems(updated.items);
+      saved(await api.applyUpdates(dashboard!.id));
     } catch (e) {
       alert((e as Error).message);
     }
@@ -250,7 +206,7 @@ export default function DashboardPage() {
             <AssetBadges asset={dashboard} />
           </div>
           <p className="ml-10 mt-0.5 text-sm text-ink-soft">{dashboard.description}</p>
-          <div className="ml-10 mt-2"><GovernanceBar kind="dashboards" asset={dashboard} onChanged={loadDashboard} /></div>
+          <div className="ml-10 mt-2"><GovernanceBar kind="dashboards" asset={dashboard} /></div>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setDialog('history')}
@@ -268,7 +224,7 @@ export default function DashboardPage() {
               {(['View', 'Edit'] as const).map((mode) => (
                 <button
                   key={mode}
-                  onClick={() => { setEditMode(mode === 'Edit'); if (mode === 'View') setDrawerOpen(false); }}
+                  onClick={() => { dispatch({ type: 'setEditMode', on: mode === 'Edit' }); if (mode === 'View') setDrawerOpen(false); }}
                   className={`rounded-full px-4 py-1.5 font-display text-sm font-semibold transition ${
                     (mode === 'Edit') === editMode ? 'bg-accent text-white shadow' : 'text-ink-soft hover:text-ink'
                   }`}
@@ -288,7 +244,7 @@ export default function DashboardPage() {
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <FilterBar dashboardId={dashboard.id} defs={dashboard.filters} values={filterValues} period={period}
-          onValues={setFilterValues} onPeriod={setPeriod} />
+          onValues={(values) => dispatch({ type: 'setFilterValues', values })} onPeriod={(p) => dispatch({ type: 'setPeriod', period: p })} />
         {editMode && (
           <div className="flex items-center gap-2">
             <button onClick={() => setFiltersOpen(true)}
@@ -345,7 +301,7 @@ export default function DashboardPage() {
       >
         {items.map((it) => (
           <div key={String(it.id)} id={it.item_id ? `card-${it.item_id}` : undefined}>
-            <DashboardCard card={it} dashboardId={dashboard.id} defs={dashboard.filters} applied={applied} period={period} editMode={editMode} onRemove={() => removeCard(it.id)} />
+            <DashboardCard card={it} dashboardId={dashboard.id} defs={dashboard.filters} applied={applied} period={period} editMode={editMode} onRemove={() => dispatch({ type: 'removeCard', cardId: it.id })} />
           </div>
         ))}
       </Grid>
@@ -360,15 +316,15 @@ export default function DashboardPage() {
 
       <AssistantWidget dashboardId={dashboard.id} dashboardName={dashboard.name} items={items} applied={applied}
         filterSummary={filterSummary}
-        onApplyFilter={(filterId, values) => setFilterValues((v) => setFilter(dashboard.filters, v, filterId, values))} />
+        onApplyFilter={(filterId, values) => dispatch({ type: 'setFilterValues', values: (v) => setFilter(dashboard.filters, v, filterId, values) })} />
 
       {filtersOpen && (
         <DashboardFilterEditor dashboard={dashboard} onClose={() => setFiltersOpen(false)}
-          onSaved={(d) => { setDashboard(d); setItems(d.items); resetFilters(d); setFiltersOpen(false); }} />
+          onSaved={(d) => { saved(d); setFiltersOpen(false); }} />
       )}
       {dialog === 'history' && (
         <VersionHistory kind="dashboards" assetId={dashboard.id} assetName={dashboard.name} canEdit={dashboard.can_edit}
-          onClose={() => setDialog(null)} onRestored={loadDashboard} />
+          onClose={() => setDialog(null)} />
       )}
       {dialog === 'share' && (
         <ShareDialog kind="dashboards" assetId={dashboard.id} assetName={dashboard.name} onClose={() => setDialog(null)} />
@@ -399,7 +355,7 @@ export default function DashboardPage() {
                     </div>
                     <button
                       disabled={used}
-                      onClick={() => addCard(c)}
+                      onClick={() => dispatch({ type: 'addCard', card: c })}
                       className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition enabled:hover:bg-accent-deep disabled:bg-line disabled:text-ink-faint"
                     >
                       {used ? 'Added' : '+ Add'}

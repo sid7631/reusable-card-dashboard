@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import type { AssetKind, DirectoryEntry, Share } from '../lib/types';
+import { useShares, useUsers } from '../lib/queries';
+import type { AssetKind, Share } from '../lib/types';
 import Modal from './Modal';
 
 interface Props {
@@ -16,27 +17,27 @@ const initials = (name: string) => name.split(' ').map((p) => p[0]).join('').sli
 
 /** Owner-only: grant specific people view or edit access to a private asset. */
 export default function ShareDialog({ kind, assetId, assetName, onClose }: Props) {
-  const [shares, setShares] = useState<Share[]>([]);
   const [query, setQuery] = useState('');
-  const [people, setPeople] = useState<DirectoryEntry[]>([]);
+  const [debounced, setDebounced] = useState('');
   const [permission, setPermission] = useState<Share['permission']>('view');
-  const [error, setError] = useState<string>();
-
-  const load = useCallback(() => api.shares(kind, assetId).then(setShares).catch((e) => setError(e.message)), [kind, assetId]);
-  useEffect(() => { load(); }, [load]);
+  const [actionError, setActionError] = useState<string>();
+  const sharesQuery = useShares(kind, assetId);
+  const shares = sharesQuery.data ?? [];
+  const people = useUsers(debounced).data ?? [];
+  const error = actionError ?? sharesQuery.error?.message;
 
   useEffect(() => {
-    const t = setTimeout(() => api.users(query).then(setPeople).catch(() => setPeople([])), 200);
+    const t = setTimeout(() => setDebounced(query), 200);
     return () => clearTimeout(t);
   }, [query]);
 
+  // Writes refresh the share list through the query cache
   const run = async (fn: () => Promise<unknown>) => {
-    setError(undefined);
+    setActionError(undefined);
     try {
       await fn();
-      await load();
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
     }
   };
 

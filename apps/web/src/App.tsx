@@ -9,7 +9,7 @@ import RequestsPage from './pages/RequestsPage';
 import DataSourcesPage from './pages/DataSourcesPage';
 import DataSourceEditor from './pages/DataSourceEditor';
 import RequestDetailPage from './pages/RequestDetailPage';
-import { api, REQUESTS_CHANGED } from './lib/api';
+import { queryClient, useRequestSummary } from './lib/queries';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AuthContext, currentUser, signOut, type SessionUser } from './lib/auth';
 import { APP_THEMES, AppThemeContext, applyAppTheme, loadAppTheme } from './lib/theme';
@@ -50,7 +50,8 @@ export default function App() {
     );
   }
 
-  const logout = () => { signOut(); setUser(null); navigate('/login', { replace: true }); };
+  // Nothing cached for one user may be shown to the next
+  const logout = () => { signOut(); queryClient.clear(); setUser(null); navigate('/login', { replace: true }); };
   return (
     <AuthContext.Provider value={{ user, signOut: logout }}>
       <Shell user={user} onSignOut={logout} />
@@ -61,16 +62,8 @@ export default function App() {
 function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sb-sidebar-collapsed') === '1');
   const [theme, setTheme] = useState(loadAppTheme);
-  const [pending, setPending] = useState(0);
+  const pending = useRequestSummary().data?.pending ?? 0;
   const location = useLocation();
-
-  // Refresh the review badge as the user moves around (cheap count query)
-  useEffect(() => {
-    const refresh = () => api.changeRequestSummary().then((s) => setPending(s.pending)).catch(() => undefined);
-    refresh();
-    window.addEventListener(REQUESTS_CHANGED, refresh);
-    return () => window.removeEventListener(REQUESTS_CHANGED, refresh);
-  }, [location.pathname]);
 
   useEffect(() => { applyAppTheme(theme); }, [theme]);
 

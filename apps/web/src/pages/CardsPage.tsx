@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import type { Card, CardData } from '../lib/types';
+import { useCardPreview, useCards } from '../lib/queries';
+import type { Card } from '../lib/types';
 import ChartRenderer from '../components/ChartRenderer';
 import AssetBadges from '../components/AssetBadges';
 import VersionHistory from '../components/VersionHistory';
@@ -10,16 +11,11 @@ import ShareDialog from '../components/ShareDialog';
 type Tab = 'all' | 'global' | 'private' | 'shared';
 const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global library'], ['private', 'My cards'], ['shared', 'Shared with me']];
 
-function CardPreview({ card }: { card: Card }) {
-  const [data, setData] = useState<CardData>({ rows: [], meta: {} });
-  const [loading, setLoading] = useState(true);
+const PREVIEW_WINDOW = { from: '2026-01-01', to: '2026-06-11' };
+const EMPTY = { rows: [], meta: {} };
 
-  useEffect(() => {
-    api.cardData(card.id, { from: '2026-01-01', to: '2026-06-11' })
-      .then(setData)
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
-  }, [card.id]);
+function CardPreview({ card }: { card: Card }) {
+  const { data = EMPTY, isPending: loading } = useCardPreview(card.id, card.version_no, PREVIEW_WINDOW);
 
   return (
     <div className="h-44">
@@ -35,17 +31,14 @@ function CardPreview({ card }: { card: Card }) {
 }
 
 export default function CardsPage() {
-  const [cards, setCards] = useState<Card[]>([]);
   const [tab, setTab] = useState<Tab>('all');
   const [dialog, setDialog] = useState<{ type: 'history' | 'share'; card: Card } | null>(null);
 
-  const load = () => api.cards(tab === 'all' ? undefined : tab).then(setCards).catch(console.error);
-  useEffect(() => { load(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data: cards, isPending } = useCards(tab === 'all' ? undefined : tab);
 
   const remove = async (card: Card) => {
     if (!confirm(`Delete card “${card.name}”? Dashboards that already use it keep their pinned version.`)) return;
     await api.deleteCard(card.id);
-    load();
   };
 
   return (
@@ -74,7 +67,7 @@ export default function CardsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((c, i) => (
+        {cards?.map((c, i) => (
           <div key={c.id} className="rise-in group rounded-2xl border border-line bg-white p-4 shadow-sm transition hover:shadow-lg" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
             <div className="mb-2 flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -115,7 +108,8 @@ export default function CardsPage() {
             </div>
           </div>
         ))}
-        {!cards.length && (
+        {isPending && <div className="col-span-full flex justify-center py-12"><div className="size-5 animate-spin rounded-full border-2 border-line border-t-accent" /></div>}
+        {cards && !cards.length && (
           <div className="col-span-full rounded-2xl border border-dashed border-line bg-white/50 p-12 text-center text-sm text-ink-faint">
             {tab === 'shared' ? 'Nothing has been shared with you yet.' : 'No cards here yet — build your first one.'}
           </div>
@@ -124,7 +118,7 @@ export default function CardsPage() {
 
       {dialog?.type === 'history' && (
         <VersionHistory kind="cards" assetId={dialog.card.id} assetName={dialog.card.name} canEdit={dialog.card.can_edit}
-          onClose={() => setDialog(null)} onRestored={load} />
+          onClose={() => setDialog(null)} />
       )}
       {dialog?.type === 'share' && (
         <ShareDialog kind="cards" assetId={dialog.card.id} assetName={dialog.card.name} onClose={() => setDialog(null)} />

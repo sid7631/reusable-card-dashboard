@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../lib/api';
+import { useFilterable } from '../lib/queries';
 import { dimensionLabel } from '../lib/filters';
 import type { DashboardDetail, DashboardFilterDef } from '../lib/types';
 import Modal from './Modal';
@@ -12,11 +13,12 @@ export default function DashboardFilterEditor({ dashboard, onClose, onSaved }: {
   dashboard: DashboardDetail; onClose: () => void; onSaved: (d: DashboardDetail) => void;
 }) {
   const [defs, setDefs] = useState<DashboardFilterDef[]>(dashboard.filters);
-  const [dims, setDims] = useState<{ name: string; label: string; sources: number[] }[]>([]);
-  const [error, setError] = useState<string>();
+  const filterable = useFilterable(dashboard.id);
+  const dims = filterable.data?.dimensions ?? [];
+  const [saveError, setError] = useState<string>();
+  const error = saveError ?? filterable.error?.message;
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { api.dashboardFilterable(dashboard.id).then((r) => setDims(r.dimensions)).catch((e) => setError(e.message)); }, [dashboard.id]);
 
   const period = defs.find((d) => d.kind === 'period');
   const dimensionFilters = defs.filter((d) => d.kind !== 'period');

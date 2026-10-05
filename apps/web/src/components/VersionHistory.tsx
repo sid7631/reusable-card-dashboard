@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../lib/api';
+import { useDiff, useVersions } from '../lib/queries';
 import { timeAgo } from '../lib/format';
-import type { AssetKind, VersionDiff, VersionInfo } from '../lib/types';
+import type { AssetKind } from '../lib/types';
 import Modal from './Modal';
 import DiffList from './DiffList';
 
@@ -18,44 +19,33 @@ interface Props {
 }
 
 export default function VersionHistory({ kind, assetId, assetName, canEdit, onClose, onRestored }: Props) {
-  const [versions, setVersions] = useState<VersionInfo[]>([]);
-  const [selected, setSelected] = useState<VersionInfo>();
+  const versionsQuery = useVersions(kind, assetId);
+  const versions = versionsQuery.data ?? [];
+  // Selected by number, so it survives the list refetching (e.g. after a restore adds a version)
+  const [selectedNo, setSelectedNo] = useState<number>();
   const [mode, setMode] = useState<Mode>('introduced');
-  const [diff, setDiff] = useState<VersionDiff>();
-  const [error, setError] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
   const [restoring, setRestoring] = useState(false);
 
-  const load = useCallback(async () => {
-    const list = await api.versions(kind, assetId);
-    setVersions(list);
-    setSelected((s) => list.find((v) => v.version_no === s?.version_no) ?? list[0]);
-  }, [kind, assetId]);
-
-  useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
-
+  const selected = versions.find((v) => v.version_no === selectedNo) ?? versions[0];
   const head = versions.find((v) => v.is_head);
   const effectiveMode: Mode = selected?.is_head ? 'introduced' : mode;
-
-  useEffect(() => {
-    if (!selected) return;
-    setDiff(undefined);
-    if (effectiveMode === 'introduced' && selected.version_no === 1) return;
-    const req = effectiveMode === 'introduced'
-      ? api.diff(kind, assetId, selected.version_no - 1, selected.version_no)
-      : api.diff(kind, assetId, selected.version_no, head?.version_no);
-    req.then(setDiff).catch((e) => setError(e.message));
-  }, [kind, assetId, selected, effectiveMode, head?.version_no]);
+  const diffRange: [number | undefined, number | undefined] = !selected || (effectiveMode === 'introduced' && selected.version_no === 1)
+    ? [undefined, undefined]
+    : effectiveMode === 'introduced' ? [selected.version_no - 1, selected.version_no] : [selected.version_no, head?.version_no];
+  const diffQuery = useDiff(kind, assetId, diffRange[0], diffRange[1]);
+  const diff = diffQuery.data;
+  const error = actionError ?? versionsQuery.error?.message ?? diffQuery.error?.message;
 
   const restore = async () => {
     if (!selected || !confirm(`Restore v${selected.version_no}? This creates a new version with its content — nothing is deleted.`)) return;
     setRestoring(true);
     try {
       await api.restore(kind, assetId, selected.version_no);
-      await load();
-      setSelected(undefined);
+      setSelectedNo(undefined);
       onRestored?.();
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
     } finally {
       setRestoring(false);
     }
@@ -67,7 +57,7 @@ export default function VersionHistory({ kind, assetId, assetName, canEdit, onCl
         <ol className="w-64 shrink-0 space-y-1.5 overflow-auto pr-1">
           {versions.map((v) => (
             <li key={v.id}>
-              <button onClick={() => setSelected(v)}
+              <button onClick={() => setSelectedNo(v.version_no)}
                 className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
                   selected?.id === v.id ? 'border-accent bg-accent-soft' : 'border-line hover:border-accent/40'
                 }`}>

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import type { CardData, ChangeRequestDetail, ChangeRequestItem, ChartType, CardConfig } from '../lib/types';
+import { keys, queryClient, useChangeRequest, useRequestItemPreview } from '../lib/queries';
+import type { ChangeRequestItem } from '../lib/types';
 import { DEFAULT_PERIOD } from '../components/PeriodSelect';
 import ChartRenderer from '../components/ChartRenderer';
 import DiffList from '../components/DiffList';
@@ -12,23 +13,22 @@ const EDIT_PATH = { card: (id: number) => `/cards/${id}/edit`, dashboard: (id: n
 
 export default function RequestDetailPage() {
   const { id } = useParams();
-  const [req, setReq] = useState<ChangeRequestDetail>();
+  const reqQuery = useChangeRequest(id);
+  const req = reqQuery.data;
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-
-  const load = useCallback(() => api.changeRequest(id!).then(setReq).catch((e) => setError(e.message)), [id]);
-  useEffect(() => { load(); }, [load]);
+  const [actionError, setActionError] = useState<string>();
+  const error = actionError ?? reqQuery.error?.message;
 
   const act = async (action: 'approve' | 'reject' | 'withdraw' | 'update') => {
     if (action === 'withdraw' && !confirm('Withdraw this request?')) return;
     setBusy(true);
-    setError(undefined);
+    setActionError(undefined);
     try {
-      setReq(await api.decideChangeRequest(req!.id, action, comment));
+      queryClient.setQueryData(keys.request(id!), await api.decideChangeRequest(req!.id, action, comment));
       setComment('');
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -118,13 +118,10 @@ export default function RequestDetailPage() {
   );
 }
 
-function ItemPanel({ requestId, item, isRoot }: { requestId: number; item: ChangeRequestItem; isRoot: boolean }) {
-  const [preview, setPreview] = useState<CardData & { chart_type: ChartType; config: CardConfig }>();
+const PREVIEW_PERIOD = { from: DEFAULT_PERIOD.from, to: DEFAULT_PERIOD.to };
 
-  useEffect(() => {
-    if (item.kind !== 'card') return;
-    api.previewRequestItem(requestId, item.id, { from: DEFAULT_PERIOD.from, to: DEFAULT_PERIOD.to }).then(setPreview).catch(() => undefined);
-  }, [requestId, item.id, item.kind, item.source_version_no]);
+function ItemPanel({ requestId, item, isRoot }: { requestId: number; item: ChangeRequestItem; isRoot: boolean }) {
+  const { data: preview } = useRequestItemPreview(requestId, item.id, item.source_version_no, PREVIEW_PERIOD, item.kind === 'card');
 
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-sm">

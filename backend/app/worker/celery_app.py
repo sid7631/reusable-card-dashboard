@@ -29,10 +29,6 @@ celery.conf.update(
     task_acks_late=True,               # a crashed worker's job is redelivered
     worker_prefetch_multiplier=1,      # don't let one worker hoard slow queries
     task_ignore_result=True,           # results go to the Redis result cache, not Celery's backend
-    # Last line of defence: jobs bound their own queries (jobs.job_deadline_s), but nothing may hold a
-    # worker process indefinitely. Soft limit raises inside the task; the hard limit replaces the process.
-    task_soft_time_limit=get_settings().query_timeout_s + 60,
-    task_time_limit=get_settings().query_timeout_s + 90,
     broker_connection_retry_on_startup=True,
     beat_schedule={
         # Expire with the schedule: if workers are busy, skip a round rather than queue a backlog
@@ -58,7 +54,11 @@ def run(coro):
     return _loop.run_until_complete(coro)
 
 
-@celery.task(name="spendboard.run_card")
+# Last line of defence: card jobs bound their own queries (jobs.job_deadline_s, ≤ QUERY_TIMEOUT_S + 10),
+# but nothing may hold a worker process indefinitely. The soft limit raises inside the task; the hard
+# limit replaces the process. Background refresh tasks are unlimited — they expire per schedule instead.
+@celery.task(name="spendboard.run_card", soft_time_limit=get_settings().query_timeout_s + 60,
+             time_limit=get_settings().query_timeout_s + 90)
 def run_card_task(job: dict[str, Any]) -> None:
     from app.execution.queue import handle
     run(handle("run_card", job))

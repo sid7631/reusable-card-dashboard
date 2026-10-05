@@ -158,3 +158,19 @@ async def test_a_hung_source_fails_the_job_instead_of_holding_a_worker(user, see
     res = await user.get(f"/api/cards/{card['id']}/data", params={"filters": json.dumps({"n": ["hung"]})})
     assert res.status_code == 400 and res.json()["detail"] == "Query timed out."
     assert time.monotonic() - t0 < 5
+
+
+async def test_viewers_wait_for_queries_longer_than_the_default_wait(user, seeded, monkeypatch):
+    # e.g. a 2-minute BigQuery job: the request must outwait RESULT_WAIT_S when the source allows it
+    from app.core.config import get_settings
+    from app.execution import jobs
+
+    async def slow(*_args, **_kwargs):
+        await asyncio.sleep(1.5)
+        return {"rows": [{"value": 1}], "meta": {}}
+
+    monkeypatch.setattr(jobs, "run_card", slow)
+    monkeypatch.setattr(get_settings(), "result_wait_s", 0.5)
+    card = (await user.post("/api/cards", kpi(seeded["source_id"], "SELECT 1 AS value"))).json()
+    res = await user.get(f"/api/cards/{card['id']}/data", params={"filters": json.dumps({"n": ["slow"]})})
+    assert res.status_code == 200 and res.json()["rows"] == [{"value": 1}]

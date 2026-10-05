@@ -131,13 +131,13 @@ All backend settings are environment variables (or `backend/.env`). The API, wor
 | Variable | Default | Meaning |
 |---|---|---|
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | 5 / 10 | Per process. Keep (API processes + worker processes) × (pool + overflow) below Postgres `max_connections` |
-| `QUERY_MAX_ROWS` / `QUERY_TIMEOUT_S` | 1000 / 30 | Row cap and timeout ceiling for card queries |
+| `QUERY_MAX_ROWS` / `QUERY_TIMEOUT_S` | 1000 / 300 | Row cap, and the server-wide ceiling on query time. Each data source sets its own timeout (default 30 s; up to 5 min, e.g. for BigQuery) in its editor. Workers' task time limits and how long requests wait follow from these |
 | `MAX_UPLOAD_MB` | 50 | File uploads |
 | `REST_MAX_RECORDS` / `REST_MAX_RESPONSE_MB` | 100000 / 20 | REST data sources |
 | `ALLOW_PRIVATE_NETWORK_SOURCES` | false | `true` lets non-admins connect sources to private addresses — development only |
 | `EXECUTION_MODE` | celery | `inline` runs queries inside the API (no worker) — tests/demos only |
 | `CELERY_BROKER_URL` | = `REDIS_URL` | Job-queue broker; `amqp://…` (RabbitMQ) or `sqs://…` move the queue off Redis — see [§4b](#4b-the-job-queue-celery-and-alternatives) |
-| `STALE_GRACE_S` / `RESULT_WAIT_S` | 21600 / 60 | How long stale results may be served; how long a request waits for a query |
+| `STALE_GRACE_S` / `RESULT_WAIT_S` | 21600 / 60 | How long stale results may be served; the minimum time a request waits for a query (it always waits at least the source's timeout + 25 s) |
 | `BREAKER_FAILURES` / `BREAKER_OPEN_S` | 5 / 30 | Pause a failing data source |
 
 ### Assistant
@@ -354,7 +354,7 @@ location / {
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_buffering off;          # dashboard render stream
-    proxy_read_timeout 120s;
+    proxy_read_timeout 330s;      # longest source timeout (300 s) + queueing
     client_max_body_size 60m;     # file uploads (MAX_UPLOAD_MB + headroom)
 }
 ```

@@ -310,6 +310,14 @@ export default function DataSourceEditor() {
               <select value={spec.execution.cache_ttl_s} onChange={(e) => patch((s) => ({ ...s, execution: { ...s.execution, cache_ttl_s: Number(e.target.value) } }))} className={`${field} !w-auto !py-1.5`}>
                 {[[300, '5 minutes'], [900, '15 minutes'], [3600, '1 hour'], [21600, '6 hours'], [86400, '1 day']].map(([v, t]) => <option key={v} value={v}>{t}</option>)}
               </select>
+              <span className={`${label.replace('mb-1 block ', '')} ml-3`} title="How long one query may run before it is cancelled">Query timeout</span>
+              <select value={spec.execution.timeout_s} aria-label="Query timeout"
+                onChange={(e) => patch((s) => ({ ...s, execution: { ...s.execution, timeout_s: Number(e.target.value) } }))} className={`${field} !w-auto !py-1.5`}>
+                {[[30, '30 seconds'], [60, '1 minute'], [120, '2 minutes'], [180, '3 minutes'], [300, '5 minutes']]
+                  .concat([[spec.execution.timeout_s, `${spec.execution.timeout_s} seconds`]])
+                  .filter(([v], i, all) => all.findIndex(([x]) => x === v) === i)
+                  .map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+              </select>
             </div>
           )}
 

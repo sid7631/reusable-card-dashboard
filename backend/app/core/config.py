@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     demo_warehouse_password: str = "reader"
 
     query_max_rows: int = 1000
-    query_timeout_s: float = 30.0
+    # Ceiling for every query. Each data source sets its own timeout (default 30 s, up to 300 s for
+    # slow warehouses such as BigQuery); this caps it server-wide.
+    query_timeout_s: float = 300.0
 
     # Fernet key for data-source credentials. The default is for local development only —
     # set SECRET_KEY in every shared environment (generate with cryptography.fernet.Fernet.generate_key()).

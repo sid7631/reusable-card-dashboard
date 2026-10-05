@@ -131,7 +131,8 @@ async def get_result(job: Job, *, wait: bool = True) -> Result | None:
     await pubsub.subscribe(f"done:{job.key}")
     try:
         await trigger(job)
-        deadline = time.monotonic() + get_settings().result_wait_s
+        # Wait as long as the query may legitimately run (long BigQuery jobs included), plus queueing
+        deadline = time.monotonic() + max(get_settings().result_wait_s, job_deadline_s(job.source) + 15)
         while time.monotonic() < deadline:
             raw = await r.get(job.key)
             if raw:
@@ -175,14 +176,17 @@ async def dispatch(job: Job, *, expires_s: float | None = None) -> None:
 
 # ---------------------------------------------------------------- computing
 @asynccontextmanager
-async def source_slot(endpoint_key: str, limit: int):
-    """Cluster-wide cap on concurrent queries per source endpoint (Redis counting semaphore)."""
+async def source_slot(endpoint_key: str, limit: int, hold_s: float = 60):
+    """Cluster-wide cap on concurrent queries per source endpoint (Redis counting semaphore).
+    `hold_s`: the longest a holder can keep its slot (its query deadline)."""
     r = redis()
     key = f"sem:{endpoint_key}"
     deadline = time.monotonic() + get_settings().result_wait_s
     while True:
         n = await r.incr(key)
-        await r.expire(key, 120)  # a crashed holder can't leak a slot for long
+        # Outlives any legitimate holder (else the count resets mid-query and the cap leaks), while a
+        # crashed holder still can't leak a slot for long
+        await r.expire(key, int(max(120, hold_s + 60)))
         if n <= limit:
             break
         await r.decr(key)
@@ -203,7 +207,7 @@ async def compute(job: Job) -> None:
     try:
         if await r.exists(f"breaker:{job.endpoint_key}"):
             raise QueryError("This data source is failing — paused briefly to let it recover.")
-        async with source_slot(job.endpoint_key, source.execution.max_concurrency):
+        async with source_slot(job.endpoint_key, source.execution.max_concurrency, job_deadline_s(source)):
             # Connectors enforce their own timeouts; this bounds anything that slips past them (a
             # client library retrying, a stalled connection) so a job can never hold a worker
             try:

@@ -6,6 +6,48 @@ space or the **global** library, and are published through admin approval.
 
 Design and roadmap: [docs/architecture.md](docs/architecture.md).
 
+## Try it (Docker only)
+
+The only requirement is Docker (Docker Desktop on Mac/Windows, or Docker Engine with Compose v2 on Linux).
+
+```bash
+git clone https://github.com/sid7631/reusable-card-dashboard
+cd reusable-card-dashboard
+git checkout feature/governance-versioning-datasources
+docker compose up --build
+```
+
+The first build takes a few minutes; later starts take about 30 seconds. Then open **http://localhost:8080** and
+sign in as one of the demo accounts:
+
+| Account | Role | Try |
+| --- | --- | --- |
+| Avery Admin | admin | Approvals queue, editing global cards and dashboards directly |
+| Riley Analyst | user | Edit a copy → propose changes, new data sources, sharing |
+| Jordan Analyst | user | A second analyst, to try sharing between users |
+
+What's included:
+
+- **Enterprise Spend Overview** — the demo dashboard on Postgres (60,000 card transactions).
+- **BigQuery Demo** — the same data in a bundled BigQuery emulator, queried through the BigQuery SQL dialect.
+- The floating **dashboard assistant**, in offline mode (no model needed).
+- Data sources you can add yourself: CSV / Excel / JSON uploads, REST APIs, Postgres, BigQuery (emulator).
+
+Useful commands:
+
+```bash
+docker compose up --build -d     # run in the background
+docker compose logs -f api       # follow the API log (also: worker, web)
+docker compose down              # stop, keep data
+docker compose down -v           # stop and delete all demo data (fresh start next time)
+PORT=9000 docker compose up      # use another port than 8080
+```
+
+To try the assistant with a real model, start the stack with a model configured, e.g. Ollama on your machine:
+`LLM_PROVIDER=openai LLM_BASE_URL=http://host.docker.internal:11434/v1 LLM_MODEL=qwen2.5:7b docker compose up`.
+
+This stack is for testing only: it uses demo passwords and allows connections to private network addresses.
+
 ## Stack
 
 | Layer | Tech |
@@ -22,7 +64,8 @@ Design and roadmap: [docs/architecture.md](docs/architecture.md).
 apps/web/            SPA + server/index.mjs (auth + production static/proxy)
 backend/app/         FastAPI: core (config, db, auth), governance, connectors, execution, api, seed
 backend/alembic/     migrations
-infra/               docker-compose (postgres, redis, api, web) + postgres init
+compose.yaml         the whole app in containers, for testers (docker compose up --build)
+infra/               dev infrastructure (postgres, redis, bigquery emulator) + postgres init
 docs/                architecture
 ```
 
@@ -38,7 +81,7 @@ npm run dev       # postgres+redis in Docker, migrate, seed, API :8010, Celery w
 
 Open http://localhost:5173 and pick an account: **Avery Admin** (admin) or **Riley / Jordan Analyst** (users).
 
-Full containerised stack instead: `npm run stack` → http://localhost:3001.
+Full containerised stack instead: `docker compose up --build` → http://localhost:8080 (see *Try it* above).
 
 Host ports default to Postgres **5433**, Redis **6380**, API **8010** to avoid clashing with local services;
 override with `POSTGRES_PORT`, `REDIS_PORT`, `API_PORT`, `WEB_PORT`.

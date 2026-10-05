@@ -321,11 +321,105 @@ async def upgrade_demo() -> None:
         print("Demo content: upgraded for the semantic layer." if changed else "Demo content: up to date.")
 
 
+BQ_PROJECT, BQ_DATASET = "spendboard-demo", "analytics"
+
+
+def _load_bigquery_emulator(host: str) -> int:
+    """Load the demo transactions into the emulator (in-memory, so this repeats after a restart)."""
+    import time
+
+    from google.api_core.client_options import ClientOptions
+    from google.auth.credentials import AnonymousCredentials
+    from google.cloud import bigquery
+
+    client = bigquery.Client(project=BQ_PROJECT, credentials=AnonymousCredentials(),
+                             client_options=ClientOptions(api_endpoint=host))
+    for _ in range(60):  # the emulator may still be starting
+        try:
+            client.get_dataset(f"{BQ_PROJECT}.{BQ_DATASET}")
+            break
+        except Exception:  # noqa: BLE001 — connection refused / not ready yet
+            time.sleep(1)
+    else:
+        raise RuntimeError(f"BigQuery emulator at {host} did not become ready.")
+    table_id = f"{BQ_PROJECT}.{BQ_DATASET}.transactions"
+    try:
+        if (client.get_table(table_id).num_rows or 0) > 0:
+            return 0
+    except Exception:  # noqa: BLE001 — table not created yet
+        pass
+    schema = [bigquery.SchemaField(n, t) for n, t in [
+        ("txn_date", "DATE"), ("segment", "STRING"), ("sub_segment", "STRING"), ("industry", "STRING"),
+        ("sub_industry", "STRING"), ("product", "STRING"), ("merchant", "STRING"), ("country", "STRING"),
+        ("vintage", "INT64"), ("amount", "NUMERIC")]]
+    client.delete_table(table_id, not_found_ok=True)
+    client.create_table(bigquery.Table(table_id, schema=schema))
+    names = [f.name for f in schema]
+    rows = [{k: (v.isoformat() if isinstance(v, date) else str(v) if k == "amount" else v) for k, v in zip(names, r, strict=True)}
+            for r in generate_transactions()]
+    for i in range(0, len(rows), 10_000):
+        errors = client.insert_rows_json(table_id, rows[i:i + 10_000])
+        if errors:
+            raise RuntimeError(f"BigQuery emulator rejected rows: {errors[:1]}")
+    return len(rows)
+
+
+async def seed_bigquery_demo() -> None:
+    """Demo stack only: BigQuery data in the emulator, plus a global source, cards and dashboard on it."""
+    host = get_settings().bigquery_emulator_host
+    if not host:
+        return
+    loaded = await asyncio.to_thread(_load_bigquery_emulator, host)
+    print(f"BigQuery emulator: loaded {loaded:,} transactions." if loaded else "BigQuery emulator: already loaded.")
+
+    async with SessionLocal() as session:
+        if await session.scalar(select(Asset.id).where(Asset.kind == "data_source", Asset.scope == "global",
+                                                       Asset.name == "Demo Warehouse (BigQuery)")):
+            return
+        system = await session.scalar(select(User).where(User.sub == "system"))
+        if system is None:
+            return
+        spec = {**DEMO_SOURCE, "type": "bigquery", "connection": None,
+                "bigquery": {"project": BQ_PROJECT, "dataset": BQ_DATASET, "auth": "adc"}}
+        source, source_v = await create_asset(session, system, "data_source", name="Demo Warehouse (BigQuery)",
+                                              description="The demo transactions in BigQuery (local emulator).",
+                                              spec=spec, scope="global")
+        ref = {"asset_id": source.id, "version_id": source_v.id}
+
+        def semantic(chart, dims, **extra):
+            return {"chart_type": chart, "data_source": ref, "created_via": "builder", "config": extra.pop("config", {}),
+                    "query": {"mode": "semantic", "dataset": "transactions", "measures": [{"name": "total_spend"}],
+                              "dimensions": dims, **extra}}
+
+        cards = [
+            ("Total spend (BigQuery)", "Charge volume for the selected period.", semantic("kpi", []), (0, 0, 4, 2)),
+            ("Spend by segment (BigQuery)", "Charge volume by business segment.",
+             semantic("donut", [{"name": "segment"}], config={"dimension": "segment", "measure": "total_spend"}), (4, 0, 4, 5)),
+            ("Monthly spend (BigQuery)", "Charge volume by month.",
+             semantic("line", [{"name": "txn_date", "grain": "month"}], order="label_asc",
+                      config={"dimension": "txn_date", "timeGrain": "month", "measure": "total_spend"}), (8, 0, 4, 5)),
+            ("Top merchants (BigQuery)", "Five merchants with the most spend.",
+             semantic("barlist", [{"name": "merchant"}], limit=5,
+                      config={"dimension": "merchant", "measure": "total_spend", "limit": 5, "rank": True}), (0, 2, 4, 5)),
+        ]
+        items = []
+        for name, description, card_spec, (x, y, w, h) in cards:
+            card, version = await create_asset(session, system, "card", name=name, description=description,
+                                               spec=card_spec, scope="global")
+            items.append({"card": {"asset_id": card.id, "version_id": version.id}, "x": x, "y": y, "w": w, "h": h})
+        await create_asset(session, system, "dashboard", name="BigQuery Demo",
+                           description="The same demo data, queried in BigQuery through the dialect-aware SQL layer.",
+                           spec={"items": items, "filters": DEMO_FILTERS}, scope="global")
+        await session.commit()
+        print("BigQuery demo: created source, 4 cards and a dashboard.")
+
+
 async def main(reset: bool) -> None:
     await seed_warehouse(reset)
     await seed_assets(reset)
     await sync_directory()
     await upgrade_demo()
+    await seed_bigquery_demo()
     await engine.dispose()
 
 

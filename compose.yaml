@@ -1,0 +1,108 @@
+# SpendBoard demo stack — everything needed to try the app, in containers.
+#
+#   docker compose up --build        then open http://localhost:8080
+#   docker compose down -v           stop and delete all demo data
+#
+# Only the web app is published (port 8080, override with PORT=...). Postgres, Redis, the API,
+# workers and the BigQuery emulator stay on the internal network, so nothing clashes with
+# services already running on your machine. Settings here are for local testing only.
+name: spendboard-demo
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/spendboard
+  WAREHOUSE_ADMIN_URL: postgresql://postgres:postgres@postgres:5432/demo_warehouse
+  DEMO_WAREHOUSE_HOST: postgres
+  DEMO_WAREHOUSE_PORT: "5432"
+  DEMO_WAREHOUSE_PASSWORD: reader
+  REDIS_URL: redis://redis:6379/0
+  JWKS_URL: http://web:3001/auth/.well-known/jwks.json
+  STORAGE_DIR: /data/storage
+  # Encrypts data-source credentials; the API and workers must share it
+  SECRET_KEY: ${SECRET_KEY:-spendboard-demo-stack-only-not-for-real-data}
+  # Testers may point sources at other containers or their own machine
+  ALLOW_PRIVATE_NETWORK_SOURCES: "true"
+  # BigQuery sources run against the bundled emulator (pre-loaded with the demo data)
+  BIGQUERY_EMULATOR_HOST: http://bigquery:9050
+  # Dashboard assistant: offline by default. For Ollama on your machine:
+  #   LLM_PROVIDER=openai LLM_BASE_URL=http://host.docker.internal:11434/v1 LLM_MODEL=qwen2.5:7b docker compose up
+  LLM_PROVIDER: ${LLM_PROVIDER:-offline}
+  LLM_MODEL: ${LLM_MODEL:-}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+  AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+
+x-backend: &backend
+  build: ./backend
+  image: spendboard-backend:demo
+  environment: *backend-env
+  volumes: [storage:/data/storage]
+  extra_hosts: ["host.docker.internal:host-gateway"]
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  bigquery:
+    image: ghcr.io/goccy/bigquery-emulator:latest
+    command: ["--project=spendboard-demo", "--dataset=analytics"]
+
+  api:
+    <<: *backend
+    # Migrate, seed demo data (Postgres + BigQuery emulator), then serve
+    command: ["sh", "-c", "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 2"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      bigquery: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/healthz')"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "interactive,refresh", "-c", "8", "--loglevel=info"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  beat:
+    <<: *backend
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=info", "--schedule", "/tmp/celerybeat-schedule"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  web:
+    build: ./apps/web
+    image: spendboard-web:demo
+    environment:
+      API_URL: http://api:8010
+      PORT: "3001"
+    ports: ["${PORT:-8080}:3001"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  storage:

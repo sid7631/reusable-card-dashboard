@@ -13,10 +13,11 @@
     "dev:web": "npm run dev --prefix apps/web",
     "dev": "npm run infra && npm run migrate && npm run seed && (npm run dev:api & npm run dev:worker & npm run dev:beat & npm run dev:web & wait)",
     "test": "cd backend && uv run pytest",
-    "stack": "docker compose -f infra/docker-compose.yml --profile full up --build",
+    "stack": "docker compose up --build",
     "dev:worker": "cd backend && OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run celery -A app.worker.celery_app worker -Q interactive,refresh -c 8 --loglevel=info",
     "dev:beat": "cd backend && uv run celery -A app.worker.celery_app beat --loglevel=info --schedule /tmp/spendboard-celerybeat",
     "loadtest": "cd backend && uv run locust -f loadtest/locustfile.py --host http://localhost:8010",
-    "infra:bigquery": "docker compose -f infra/docker-compose.yml --profile bigquery up -d bigquery"
+    "infra:bigquery": "docker compose -f infra/docker-compose.yml --profile bigquery up -d bigquery",
+    "stack:down": "docker compose down -v"
   }
 }

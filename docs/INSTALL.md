@@ -139,6 +139,8 @@ All backend settings are environment variables (or `backend/.env`). The API, wor
 | `CELERY_BROKER_URL` | = `REDIS_URL` | Job-queue broker; `amqp://…` (RabbitMQ) or `sqs://…` move the queue off Redis — see [§4b](#4b-the-job-queue-celery-and-alternatives) |
 | `STALE_GRACE_S` / `RESULT_WAIT_S` | 21600 / 60 | How long stale results may be served; the minimum time a request waits for a query (it always waits at least the source's timeout + 25 s) |
 | `BREAKER_FAILURES` / `BREAKER_OPEN_S` | 5 / 30 | Pause a failing data source |
+| `STUCK_AFTER_S` | `QUERY_TIMEOUT_S` + 60 | Workers count as stuck after this long without progress while card jobs wait — see [§4c](#4c-health-checks-and-alerts) |
+| `QUEUE_WARN_DEPTH` | 200 | Queued jobs above this mark the system *degraded* |
 
 ### Assistant
 
@@ -217,6 +219,65 @@ acks, retries or priorities, and rebalancing pauses consumption when workers sca
 `change_request.merged`, `data_source.refreshed` or audit events for other systems (search indexing, notifications,
 a data catalogue, cache invalidation from upstream data loads). That is additive and needs no change to execution.
 
+## 4c. Health checks and alerts
+
+Card queries run on workers, so a running API doesn't mean dashboards work: workers can be alive yet stuck (for
+example, waiting on a data source that never answers), and then every uncached card fails. The system measures
+*progress* — each worker records every task it finishes or discards — and compares it with the queue.
+
+| Status | When |
+|---|---|
+| **failing** | Postgres or Redis unreachable; or **workers stuck**: no worker progress for `STUCK_AFTER_S` while card jobs wait in the queue, or while a card job has been held longer than that |
+| **degraded** | More than `QUEUE_WARN_DEPTH` jobs queued, or a data source paused by its circuit breaker |
+| **ok** | Anything else, including an idle system |
+
+`STUCK_AFTER_S` defaults to the longest allowed query + 60 s, so a slow but healthy BigQuery job is never "stuck".
+
+**Three checks, three jobs**
+
+| Check | Use it as | Fails when |
+|---|---|---|
+| `GET /readyz` (api, port 8010) | **api readiness** probe | Postgres or Redis unreachable |
+| `python -m app.ops.check` (worker container) | **worker liveness** probe — the platform restarts stuck workers | Workers stuck (exit code 1) |
+| `GET /metrics` (api, Prometheus text) | Monitoring and alert rules | Never — exposes the numbers |
+
+Stuck workers deliberately do **not** fail `/readyz`: that would take every API replica out of service and turn
+"uncached cards fail" into "the whole app is down". `/healthz` stays a plain API liveness check. These endpoints
+sit outside `/api`, so the web server never exposes them publicly; admins also get the full snapshot with reasons
+at `GET /api/ops/health`.
+
+Worker liveness probe (Kubernetes example — period and threshold are up to you; give it an initial delay so a
+fresh worker can start):
+
+```yaml
+livenessProbe:
+  exec: { command: ["python", "-m", "app.ops.check"] }
+  initialDelaySeconds: 60
+  periodSeconds: 60
+  timeoutSeconds: 15
+  failureThreshold: 2
+```
+
+The check is cluster-wide: if card jobs wait and *no* worker anywhere progresses, every worker is stuck, so
+restarting them all is right. A restarted worker reports healthy at once, even while the broker still lists the
+jobs its predecessor held (they are released after the visibility timeout, `QUERY_TIMEOUT_S` + 120 s).
+
+**Metrics** (all read from Redis, so every API replica reports the same values):
+
+| Metric | Meaning |
+|---|---|
+| `spendboard_status` | 0 ok · 1 degraded · 2 failing |
+| `spendboard_up{component}` | Postgres / Redis reachable |
+| `spendboard_workers_stuck` | 1 when workers are stuck |
+| `spendboard_queue_depth{queue}` | Jobs waiting (`interactive`, `refresh`); absent when the broker isn't Redis — use the broker's own metrics |
+| `spendboard_jobs_in_flight`, `spendboard_oldest_card_job_held_seconds` | Jobs taken by workers; age of the oldest card job |
+| `spendboard_seconds_since_worker_activity` | Time since any worker last finished or discarded a task |
+| `spendboard_breakers_open` | Data sources paused by the circuit breaker |
+| `spendboard_card_lookups_total{result}`, `spendboard_card_jobs_total{outcome}`, `spendboard_compute_seconds{quantile}` | Cache hits, computations, errors, latency |
+
+Suggested alerts: `spendboard_status == 2` for 2 minutes (page someone); `spendboard_status == 1` for 10 minutes
+(investigate); `spendboard_breakers_open > 0` for 10 minutes (a data source is down).
+
 ## 5. Install with Docker (recommended)
 
 The repository builds two images from the same source tree:
@@ -253,8 +314,8 @@ Map each component to a deployment:
 | Deployment | Image | Command | Replicas | Probes |
 |---|---|---|---|---|
 | web | web | `node server/index.mjs` | 1 (see §7) | HTTP GET `/auth/users` |
-| api | backend | `uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 2` | 2+ | HTTP GET `/healthz` |
-| worker | backend | `celery -A app.worker.celery_app worker -Q interactive,refresh -c 8` | 1+ | process liveness |
+| api | backend | `uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 2` | 2+ | liveness GET `/healthz`, readiness GET `/readyz` |
+| worker | backend | `celery -A app.worker.celery_app worker -Q interactive,refresh -c 8` | 1+ | liveness exec `python -m app.ops.check` ([§4c](#4c-health-checks-and-alerts)) |
 | scheduler | backend | `celery -A app.worker.celery_app beat --schedule /tmp/celerybeat-schedule` | **1** | process liveness |
 | migrate (Job) | backend | `alembic upgrade head` | run once per release, before api | — |
 
@@ -381,6 +442,8 @@ location / {
 - [ ] **Data-source accounts**: read-only database roles; BigQuery service accounts with only *BigQuery Data Viewer* +
   *BigQuery Job User*; sensible scan caps per BigQuery source.
 - [ ] **TLS** at the edge; only the web server exposed.
+- [ ] **Health**: api readiness on `/readyz`, worker liveness on `python -m app.ops.check`, `/metrics` scraped
+  with an alert on `spendboard_status == 2` ([§4c](#4c-health-checks-and-alerts)).
 - [ ] **Logs**: collect stdout/stderr of all four processes.
 - [ ] **Sizing**: start with 2 API replicas × 2 Uvicorn workers and 1–2 worker containers × 8 processes; see
   [loadtest.md](loadtest.md) for measured throughput and how to re-run the load test against your install.
@@ -392,6 +455,8 @@ location / {
 ```bash
 curl -s http://<web-host>:3001/auth/users          # web server up (simulated sign-in)
 curl -s http://<api-host>:8010/healthz              # {"status":"ok"}
+curl -s http://<api-host>:8010/readyz               # {"status":"ready","postgres":true,"redis":true}
+python -m app.ops.check --verbose                   # in a worker container: status, queue, worker progress
 ```
 
 Then sign in, open a dashboard and confirm cards load (that exercises Redis, a worker and a data source end to end).

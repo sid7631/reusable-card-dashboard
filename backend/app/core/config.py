@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     breaker_failures: int = 5
     breaker_open_s: int = 30
 
+    # Health (app/ops/health.py). Workers count as stuck when card jobs are waiting and no worker has
+    # finished or discarded anything for this long; default: the longest allowed query + 60 s.
+    stuck_after_s: float | None = None
+    # Queue length that marks the system "degraded" (busy, not broken)
+    queue_warn_depth: int = 200
+
     # Dashboard assistant — OpenAI chat-completions format.
     #   offline : no model calls; answers from the figures on screen (rule-based)
     #   openai  : any OpenAI-compatible endpoint — OpenAI, or Ollama at http://localhost:11434/v1

@@ -13,7 +13,7 @@ from typing import Any
 
 import billiard
 from celery import Celery
-from celery.signals import worker_process_init
+from celery.signals import task_postrun, task_revoked, worker_process_init, worker_ready
 
 from app.core.config import get_settings
 
@@ -30,6 +30,10 @@ celery.conf.update(
     worker_prefetch_multiplier=1,      # don't let one worker hoard slow queries
     task_ignore_result=True,           # results go to the Redis result cache, not Celery's backend
     broker_connection_retry_on_startup=True,
+    # A job taken by a worker that died without acknowledging it is handed out again after this long.
+    # Default is 1 hour; card jobs can't outlive their hard time limit (QUERY_TIMEOUT_S + 90 s), so a
+    # shorter timeout recovers sooner. Must stay above that limit, or running jobs would be duplicated.
+    broker_transport_options={"visibility_timeout": int(get_settings().query_timeout_s + 120)},
     beat_schedule={
         # Expire with the schedule: if workers are busy, skip a round rather than queue a backlog
         "refresh-rest-extracts": {"task": "spendboard.refresh_rest", "schedule": 60.0, "options": {"expires": 60}},
@@ -37,12 +41,35 @@ celery.conf.update(
     },
 )
 
+# ---------------------------------------------------------------- progress for health checks
+# Every task a worker finishes — or discards because it expired — proves the workers are consuming
+# (app/ops/health.py). Sync client: signals run outside the task's event loop.
+_activity_client = None
+
+
+def _mark_activity(**_: Any) -> None:
+    global _activity_client
+    try:
+        if _activity_client is None:
+            import redis as redis_sync
+            _activity_client = redis_sync.Redis.from_url(get_settings().redis_url, socket_timeout=2)
+        from app.ops.health import mark_activity_sync
+        mark_activity_sync(_activity_client)
+    except Exception:  # noqa: BLE001 — health bookkeeping must never fail a task
+        pass
+
+
+task_postrun.connect(_mark_activity, weak=False)
+task_revoked.connect(_mark_activity, weak=False)   # includes jobs dropped as expired
+worker_ready.connect(_mark_activity, weak=False)   # a fresh worker isn't "stuck" before its first job
+
 _loop: asyncio.AbstractEventLoop | None = None
 
 
 @worker_process_init.connect
 def _init_loop(**_: Any) -> None:
-    global _loop
+    global _loop, _activity_client
+    _activity_client = None  # never share the parent's socket with a forked child
     _loop = asyncio.new_event_loop()
     asyncio.set_event_loop(_loop)
 

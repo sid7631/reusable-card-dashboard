@@ -11,6 +11,7 @@ import DataSourceEditor from './pages/DataSourceEditor';
 import RequestDetailPage from './pages/RequestDetailPage';
 import { queryClient, useRequestSummary } from './lib/queries';
 import ErrorBoundary from './components/ErrorBoundary';
+import DemoRecorder from './features/demo-recorder';
 import { AuthContext, currentUser, signOut, type SessionUser } from './lib/auth';
 import { APP_THEMES, AppThemeContext, applyAppTheme, loadAppTheme } from './lib/theme';
 
@@ -107,6 +108,7 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
             icon="M3 8.5l3 3 7-7M2 2h12v12H2z" collapsed={collapsed} />
         </nav>
         <div className="mt-auto space-y-3">
+          <DemoRecorder collapsed={collapsed} />
           <div className={collapsed ? '' : 'rounded-xl bg-white/5 p-3.5'}>
             {!collapsed && (
               <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300/60">App theme</p>

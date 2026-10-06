@@ -1,0 +1,1285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}</style>
+</head>
+<body>
+<title>SpendBoard Engineering Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: long-form reference — contents rail on wide screens, one comfortable reading column; chapters numbered because they are a reading order. */
+:root {
+  --bg: #f5f6f9;
+  --panel: #ffffff;
+  --sunk: #eef1f6;
+  --fg: #152039;
+  --fg-soft: #46536d;
+  --muted: #66728b;
+  --line: #d9dfe8;
+  --accent: #0b6fd0;
+  --accent-soft: #e6f0fb;
+  --warn: #a8650a;
+  --warn-soft: #fbf1e1;
+  --ok: #1d7a4c;
+  --ok-soft: #e5f4ec;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1420; --panel: #151d2c; --sunk: #111827; --fg: #e3e8f1; --fg-soft: #b0bacb; --muted: #8b97ad;
+    --line: #273246; --accent: #5aa9f2; --accent-soft: #15293f; --warn: #e2a64f; --warn-soft: #2d2213;
+    --ok: #5cc38e; --ok-soft: #13291f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1420; --panel: #151d2c; --sunk: #111827; --fg: #e3e8f1; --fg-soft: #b0bacb; --muted: #8b97ad;
+  --line: #273246; --accent: #5aa9f2; --accent-soft: #15293f; --warn: #e2a64f; --warn-soft: #2d2213;
+  --ok: #5cc38e; --ok-soft: #13291f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { background: var(--bg); color: var(--fg); font: 16px/1.7 var(--font-body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 96px;
+        display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 52px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 28px; padding-inline: 16px; padding-block: 24px 64px; }
+  body { font-size: 16.5px; } }
+
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px);
+          overflow-y: auto; font-size: 13px; display: flex; flex-direction: column; gap: 1px; }
+nav.toc .k { font: 600 11px var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+nav.toc a { color: var(--fg-soft); text-decoration: none; padding: 3px 10px; border-left: 2px solid var(--line); line-height: 1.45; }
+nav.toc a span { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); border-left-color: var(--accent); outline: none; }
+@media (max-width: 900px) {
+  nav.toc { position: static; max-height: none; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  nav.toc a { border-left: 0; padding: 5px 2px; border-bottom: 1px solid var(--line); }
+  nav.toc a:last-child { border-bottom: 0; }
+}
+
+main { min-width: 0; }
+article > header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 40px; }
+.eyebrow { font: 600 11px var(--font-body); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 800 clamp(30px, 4.6vw, 44px)/1.08 var(--font-display); letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+.lede { font-size: 18px; color: var(--fg-soft); max-width: 66ch; margin: 0; }
+section.ch { padding-top: 40px; margin-top: 40px; border-top: 1px solid var(--line); scroll-margin-top: 16px; }
+h2 { font: 700 26px/1.2 var(--font-display); letter-spacing: -.01em; margin: 0 0 14px; text-wrap: balance;
+     display: flex; gap: 12px; align-items: baseline; }
+h2 .n { font: 500 15px var(--font-mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+h3 { font: 700 18px/1.3 var(--font-display); margin: 30px 0 8px; text-wrap: balance; }
+h4 { font: 600 13px var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 22px 0 6px; }
+p, li { max-width: 70ch; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0 0 14px; padding-left: 22px; } li { margin: 5px 0; }
+strong { font-weight: 600; }
+em { font-style: italic; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--sunk); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; }
+pre { margin: 0 0 16px; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto;
+      font: 13px/1.6 var(--font-mono); color: var(--fg); max-width: 100%; }
+pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+a { color: var(--accent); }
+.why { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 18px 0; max-width: 72ch; }
+.why b { display: block; font: 600 11px var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.why p:last-child { margin-bottom: 0; }
+.warn { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 18px 0; max-width: 72ch; }
+.warn b { display: block; font: 600 11px var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--warn); margin-bottom: 4px; }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin: 0 0 18px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.5; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 11px var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--sunk); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.steps { counter-reset: s; list-style: none; padding-left: 0; }
+.steps li { counter-increment: s; position: relative; padding-left: 36px; }
+.steps li::before { content: counter(s); position: absolute; left: 0; top: 2px; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent); font: 600 12px/24px var(--font-mono); text-align: center; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
+.links a { font-size: 14px; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 12px; text-decoration: none; }
+dl.gl { display: grid; grid-template-columns: minmax(130px, max-content) minmax(0, 1fr); gap: 8px 18px; max-width: 76ch; }
+dl.gl dt { font-weight: 600; } dl.gl dd { margin: 0; color: var(--fg-soft); }
+@media (max-width: 560px) { dl.gl { grid-template-columns: minmax(0, 1fr); gap: 2px; } dl.gl dd { margin-bottom: 10px; } }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <span class="k">Contents</span>
+  <a href="#c1"><span>01</span>How to read this</a>
+  <a href="#c2"><span>02</span>The big picture</a>
+  <a href="#c3"><span>03</span>Sign-in and identity</a>
+  <a href="#c4"><span>04</span>Data model</a>
+  <a href="#c5"><span>05</span>Versioning</a>
+  <a href="#c6"><span>06</span>What a version contains</a>
+  <a href="#c7"><span>07</span>Visibility and permissions</a>
+  <a href="#c8"><span>08</span>Publishing workflow</a>
+  <a href="#c9"><span>09</span>Merging</a>
+  <a href="#c10"><span>10</span>Data sources</a>
+  <a href="#c11"><span>11</span>Credentials and source safety</a>
+  <a href="#c12"><span>12</span>Semantic layer</a>
+  <a href="#c13"><span>13</span>Filters</a>
+  <a href="#c14"><span>14</span>Running queries at scale</a>
+  <a href="#c15"><span>15</span>Dashboard assistant</a>
+  <a href="#c16"><span>16</span>Frontend</a>
+  <a href="#c17"><span>17</span>Security summary</a>
+  <a href="#c18"><span>18</span>Configuration and operations</a>
+  <a href="#c19"><span>19</span>Design decisions</a>
+  <a href="#c20"><span>20</span>Open items and glossary</a>
+</nav>
+
+<main>
+<article>
+<header>
+  <span class="eyebrow">reusable-card-dashboard · branch feature/governance-versioning-datasources</span>
+  <h1>SpendBoard Engineering Guide</h1>
+  <p class="lede">A complete walkthrough of how SpendBoard works: every component, every rule for versioning and
+  publishing, how data sources and filters are wired, how queries are cached and run at scale, where files live, how the
+  platform reports its own health, how the dashboard assistant answers questions, and how the demo recorder works.
+  Written to be read start to finish.</p>
+  <div class="links">
+    <a href="https://claude.ai/artifact/CyGUMfE25Cd2mV8oSiHYi9">Architecture diagrams</a>
+  </div>
+</header>
+
+<!-- ============================================================ 01 -->
+<section class="ch" id="c1">
+<h2><span class="n">01</span>How to read this</h2>
+<p>SpendBoard is a platform for building chart <strong>cards</strong> (a KPI, a bar list, a trend line), placing them on
+<strong>dashboards</strong>, and reusing the same card on many dashboards. Each card reads from a <strong>data
+source</strong>: a Postgres database, a BigQuery dataset, a REST API, or an uploaded CSV, Excel or JSON file.</p>
+<p>On top of that sit four big ideas, and the chapters follow them in order:</p>
+<ol>
+  <li><strong>Governance.</strong> Everything is versioned, lives in a private space or the global library, and gets
+  into the global library only through an admin-reviewed change request that merges like a pull request (chapters 4–9).</li>
+  <li><strong>Data sources and a semantic layer.</strong> Sources are described in business terms (dimensions,
+  measures, a time dimension), and cards and filters work in those terms (chapters 10–13).</li>
+  <li><strong>Scale.</strong> Card results are cached and shared, queries run on workers with per-source limits, and a
+  dashboard loads in one streamed request (chapter 14).</li>
+  <li><strong>The assistant.</strong> A chat panel answers questions about the dashboard on screen, using tools rather
+  than raw data (chapter 15).</li>
+</ol>
+<p>Operations run through several chapters: file storage on disk or S3 (chapter 10), protection against hung sources
+and long-running queries (chapter 14), the frontend's data layer and the demo recorder (chapter 16), and health checks
+(chapter 18).</p>
+<p>Each chapter explains what happens, then <em>why</em> it was designed that way (in blue boxes), then the exact rules
+and settings. Code locations are given as paths in the repository, e.g. <code>backend/app/governance/service.py</code>.</p>
+</section>
+
+<!-- ============================================================ 02 -->
+<section class="ch" id="c2">
+<h2><span class="n">02</span>The big picture</h2>
+<p>SpendBoard is made of seven running parts:</p>
+<div class="tbl"><table>
+<thead><tr><th>Part</th><th>What it does</th><th>Code</th></tr></thead>
+<tbody>
+<tr><td>Web app (SPA)</td><td>The React user interface: dashboards, card studio, data sources, approvals, the assistant panel.</td><td><code>apps/web/src</code></td></tr>
+<tr><td>Web server (Node)</td><td>Serves the SPA in production, proxies <code>/api</code> to FastAPI, and in development acts as the simulated single-sign-on provider (issues tokens).</td><td><code>apps/web/server/index.mjs</code></td></tr>
+<tr><td>API (FastAPI)</td><td>Everything the SPA calls: governance, versioning, data sources, the semantic compiler, the render stream, the assistant. Stateless, so it can run as many replicas.</td><td><code>backend/app</code></td></tr>
+<tr><td>Workers (Celery)</td><td>Run every card query against the data sources, plus scheduled refreshes.</td><td><code>backend/app/worker</code></td></tr>
+<tr><td>Postgres (metadata)</td><td>Users, assets, versions, shares, change requests, encrypted secrets, uploaded-file records, audit log. Never stores card results.</td><td><code>backend/app/models.py</code></td></tr>
+<tr><td>Redis</td><td>Result cache, single-flight locks, the Celery job queue (unless <code>CELERY_BROKER_URL</code> points elsewhere), completion messages, per-source concurrency counters, current-REST-extract pointers, worker progress, statistics, the assistant's rate limit.</td><td><code>backend/app/core/redis.py</code></td></tr>
+<tr><td>File storage</td><td>Uploaded files and DuckDB extracts: a disk shared by the API and workers, or an S3 bucket.</td><td><code>backend/app/core/storage.py</code></td></tr>
+</tbody></table></div>
+
+<h3>Two paths</h3>
+<p>Everything in the system follows one of two paths.</p>
+<p>The <strong>request path</strong> is browser → web server → API → Postgres/Redis. It handles reading and saving
+definitions, permissions, and looking up cached card results. It never connects to a data source.</p>
+<p>The <strong>execution path</strong> is Redis queue → worker → data source → Redis. When a card result isn't cached,
+the API puts one job on the queue; a worker runs it against the source, writes the result into the cache, and
+announces it is done. The API then streams the result back to the browser.</p>
+<div class="why"><b>Why split them</b><p>Data sources can be slow or flaky, and dashboards are viewed by many people at
+once. Keeping source queries off the request path means a slow source can never tie up the API, the number of queries
+hitting a source can be capped across the whole cluster, and identical requests from many viewers turn into one query.</p></div>
+
+<h3>Local ports</h3>
+<div class="tbl"><table>
+<thead><tr><th>Service</th><th>Port</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Vite dev server (SPA)</td><td><code>5173</code></td><td>Proxies <code>/api</code> → 8010 and <code>/auth</code> → 3001</td></tr>
+<tr><td>Web server / auth</td><td><code>3001</code></td><td>Also the full Docker stack's entry point</td></tr>
+<tr><td>API</td><td><code>8010</code></td><td>Interactive docs at <code>/docs</code></td></tr>
+<tr><td>Postgres</td><td><code>5433</code></td><td>Databases <code>spendboard</code>, <code>spendboard_test</code>, <code>demo_warehouse</code></td></tr>
+<tr><td>Redis</td><td><code>6380</code></td><td>Database 0 for the app, 15 for tests</td></tr>
+<tr><td>BigQuery emulator</td><td><code>9050</code></td><td>Development only (<code>npm run infra:bigquery</code>); in-memory, so re-run the seed after it restarts</td></tr>
+<tr><td>Docker demo stack</td><td><code>8080</code></td><td>Everything in containers (<code>npm run stack</code>); its databases aren't published to the host</td></tr>
+</tbody></table></div>
+<p>These avoid 5432 and 8000, which were already in use on the development machine; all are configurable.</p>
+</section>
+
+<!-- ============================================================ 03 -->
+<section class="ch" id="c3">
+<h2><span class="n">03</span>Sign-in and identity</h2>
+<p>SpendBoard behaves as if a corporate single-sign-on provider stood in front of it. In this build the web server
+plays that provider, so the same code will work with Okta or Azure AD later by changing configuration only.</p>
+<ol class="steps">
+  <li>The sign-in page lists directory users from <code>GET /auth/users</code> (Avery Admin, Riley Analyst, Jordan Analyst).</li>
+  <li>Choosing one calls <code>POST /auth/token</code>. The web server signs a JWT with an RSA key (RS256). Claims:
+  <code>sub</code> (user id), <code>email</code>, <code>name</code>, <code>roles</code>, <code>iss = spendboard-auth</code>,
+  <code>aud = spendboard-api</code>, <code>exp</code> one hour later. The signing key is generated once and kept in
+  <code>apps/web/server/.keys/</code> so tokens survive restarts.</li>
+  <li>The SPA stores the token in <code>sessionStorage</code> (per browser tab) and sends it on every API call as
+  <code>Authorization: Bearer &lt;token&gt;</code>. A 401 response signs the user out.</li>
+  <li>FastAPI reads the token's key id, fetches the public keys from <code>/auth/.well-known/jwks.json</code> (cached for
+  ten minutes, refetched immediately if an unknown key id appears, which handles key rotation), and verifies signature,
+  issuer, audience and expiry.</li>
+  <li>The user row is created on first sight (just-in-time provisioning) and its name, email and role are updated from
+  the token on later requests. The role is <code>admin</code> if the token's roles include it, otherwise <code>user</code>.</li>
+</ol>
+<p>Because people should be findable for sharing before they ever sign in, the seed script also pre-creates the three
+directory users. In production that role is played by directory sync (SCIM) from the identity provider.</p>
+<div class="why"><b>Why JWT + JWKS</b><p>It is how real OIDC providers work. The API never shares a secret with the
+identity provider; it only needs the provider's public keys. Switching to a real provider means pointing
+<code>JWKS_URL</code>, <code>JWT_ISSUER</code> and <code>JWT_AUDIENCE</code> at it and mapping its role claim.</p></div>
+<h4>In production</h4>
+<p>The hosting platform signs users in, so the simulated provider is development-only. Connecting to the platform is
+configuration: set <code>JWKS_URL</code>, <code>JWT_ISSUER</code> and <code>JWT_AUDIENCE</code>, and check how its token
+marks admins. The backend treats a user as admin when the token's <code>roles</code> list contains <code>"admin"</code>
+(<code>backend/app/core/auth.py</code>); a different claim name (<code>groups</code>, <code>role</code>, a group id) is a
+one-line change. Without it, everyone signs in as a normal user.</p>
+<p>Code: <code>apps/web/server/index.mjs</code>, <code>backend/app/core/auth.py</code>, <code>apps/web/src/lib/auth.ts</code>.</p>
+</section>
+
+<!-- ============================================================ 04 -->
+<section class="ch" id="c4">
+<h2><span class="n">04</span>Data model</h2>
+<p>The metadata database has ten tables. Migrations live in <code>backend/alembic/versions</code> (0001 governance
+schema, 0002 change-request root and ordering, 0003 secrets and files, 0004 storage keys instead of file paths).</p>
+<div class="tbl"><table>
+<thead><tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>users</code></td><td>sub (unique), email, name, role (user · admin)</td><td>People, provisioned from tokens</td></tr>
+<tr><td><code>assets</code></td><td>kind (data_source · card · dashboard), scope (private · global), owner_id, name, description, head_version_id, forked_from_asset_id, forked_from_version_id, archived_at</td><td>The stable identity of every card, dashboard and data source</td></tr>
+<tr><td><code>asset_versions</code></td><td>asset_id, version_no (unique per asset), name, description, spec (JSONB), change_note, created_by, created_at</td><td>Every saved version — immutable</td></tr>
+<tr><td><code>asset_dependencies</code></td><td>version_id, depends_on_version_id, depends_on_asset_id</td><td>Which versions a version points at</td></tr>
+<tr><td><code>asset_shares</code></td><td>asset_id, grantee_type (user), grantee_id, permission (view · edit), granted_by</td><td>Sharing of private assets</td></tr>
+<tr><td><code>change_requests</code></td><td>status (pending · approved · rejected · withdrawn), title, description, requested_by, root_asset_id, reviewed_by, review_comment, decided_at</td><td>Publishing proposals</td></tr>
+<tr><td><code>change_request_items</code></td><td>request_id, position, type (publish_new · update_existing), source asset + version, target asset, base version, result version</td><td>One row per asset in a request's bundle</td></tr>
+<tr><td><code>audit_events</code></td><td>actor_id, action, asset_id, version_id, request_id, payload (JSONB), at</td><td>Who did what, when</td></tr>
+<tr><td><code>secrets</code></td><td>owner_id, ciphertext</td><td>Encrypted data-source credentials</td></tr>
+<tr><td><code>file_objects</code></td><td>uploaded_by, filename, format, size, checksum, storage_key, db_key, tables (JSONB)</td><td>Uploaded files and the DuckDB database they were loaded into, both as storage keys (<code>uploads/12.csv</code>, <code>files/12.duckdb</code>)</td></tr>
+</tbody></table></div>
+<h4>Database-level guarantees</h4>
+<ul>
+  <li>A trigger (<code>asset_versions_immutable</code>) raises an error on any UPDATE or DELETE of a version row.</li>
+  <li>Check constraints restrict kind, scope, role, share permission, request status and item type to their allowed values.</li>
+  <li>A private asset must have an owner; global assets have none (they belong to the organisation).</li>
+  <li><code>assets</code> and <code>asset_versions</code> reference each other (head version, fork base); those two
+  foreign keys are added after both tables exist.</li>
+</ul>
+<p>The analytics data itself is not in this database. The demo data lives in a separate <code>demo_warehouse</code>
+database (60,000 card transactions, generated by a deterministic random generator so it is identical on every machine)
+and is queried through a read-only role, exactly like any customer database would be.</p>
+</section>
+
+<!-- ============================================================ 05 -->
+<section class="ch" id="c5">
+<h2><span class="n">05</span>Versioning</h2>
+<p>Cards, dashboards and data sources are versioned the same way, by the same code
+(<code>backend/app/governance/service.py</code>).</p>
+<h3>Assets and versions</h3>
+<p>An <strong>asset</strong> is the thing you'd name in conversation: "the Product Spend card". It has an owner, a
+scope, and a pointer to its current <strong>head version</strong>. A <strong>version</strong> is a full snapshot of the
+asset at one save: its name, description and complete typed spec. Saving never edits; it always appends version
+<em>n+1</em> and moves the head.</p>
+<div class="why"><b>Why immutable versions</b><p>Three later features depend on it. Dashboards can point at an exact card
+version and keep rendering it unchanged. Change requests can compare "what you started from" with "what you propose".
+And cached results can be keyed by version id, because a version's definition can never change underneath the cache.</p></div>
+
+<h3>What happens on save</h3>
+<ol class="steps">
+  <li><strong>Validate the spec</strong> against the kind's schema (Pydantic). Unknown fields are rejected.</li>
+  <li><strong>Check references.</strong> Every version the spec points at must exist, belong to the named asset, be of
+  the right kind (cards point at data sources, dashboards at cards) and be visible to the saver. A <em>global</em>
+  asset may never point at a <em>private</em> one — that would leak private work into the shared library — so this
+  returns 409 "publish it first".</li>
+  <li><strong>Data-source policy</strong> (data sources only): credential reuse, server-setting references, file
+  ownership and the network guard (chapter 11).</li>
+  <li><strong>Lock the asset row</strong> (<code>SELECT … FOR UPDATE</code>) so two simultaneous saves can't both become
+  "version 4".</li>
+  <li><strong>Insert the version</strong> with <code>version_no = max + 1</code>, record its dependency edges, move the
+  asset's head, copy name and description onto the asset for fast listing, update <code>updated_at</code>, and write an
+  audit event.</li>
+</ol>
+
+<h3>Pinning</h3>
+<p>References always name a <em>version</em>, not just an asset: a dashboard placement says "card 7, version 12"; a
+card says "data source 1, version 3". This is called pinning.</p>
+<ul>
+  <li>Editing a card creates a new card version but does <strong>not</strong> change any dashboard. The dashboard keeps
+  rendering the version it pinned.</li>
+  <li>When a pinned card has a newer head, the dashboard shows an <strong>Update</strong> chip on that card and a banner
+  listing them. <strong>Update all</strong> (<code>POST /dashboards/:id/apply-updates</code>) re-pins those placements to
+  the latest versions and saves that as a new dashboard version.</li>
+  <li>When a card is saved, it pins the <em>current</em> head of its data source.</li>
+  <li>Laying out a dashboard keeps existing placements on their pins (matched by the placement's stable
+  <code>item_id</code>); newly added cards are pinned to their current head.</li>
+</ul>
+
+<h3>History, comparison, restore</h3>
+<ul>
+  <li><code>GET /:kind/:id/versions</code> lists versions with author, time and change note.</li>
+  <li><code>GET /:kind/:id/diff?from_no=&amp;to_no=</code> returns a structural diff: a list of changes, each with a JSON
+  path, an operation (added, removed, changed), the before and after values, and for multi-line text (SQL) a unified
+  line diff. Lists of objects are matched by a stable key — <code>item_id</code> for dashboard placements,
+  <code>id</code> for filters, <code>name</code> for model entries — so moving one placement shows as one change rather
+  than a cascade. For dashboards the response also maps placement ids to card names, which the UI uses for labels like
+  "Added “Top Airlines”".</li>
+  <li><code>POST /:kind/:id/restore/:no</code> appends a new version containing the old content, with the change note
+  "Restored vN". History is never rewritten. Restoring the current head is refused.</li>
+</ul>
+
+<h3>Deleting</h3>
+<p>Delete is <strong>archive</strong>: the asset gets <code>archived_at</code>, disappears from lists and can't be
+opened directly, but its versions remain. A dashboard that pinned an archived card keeps rendering it.</p>
+</section>
+
+<!-- ============================================================ 06 -->
+<section class="ch" id="c6">
+<h2><span class="n">06</span>What a version contains</h2>
+<p>Each kind has a typed spec, defined in <code>backend/app/governance/specs.py</code>.</p>
+<h3>Data source</h3>
+<pre><code>type            postgres | bigquery | rest | file
+connection      host, port, database, user, secret_ref          (postgres)
+bigquery        project, dataset, location, auth (key | adc),   (bigquery)
+                secret_ref, maximum_bytes_billed
+rest            url, headers, query, auth, records_path,        (rest)
+                pagination, table
+file            file_id                                          (file)
+execution       max_concurrency (5), timeout_s (30, up to 300), cache_ttl_s (900)
+model           datasets: [{name, label, description, time_dimension,
+                            dimensions: [{name, column, type, label, description}],
+                            measures:   [{name, expr, label, description, format}]}]</code></pre>
+<p>Older data-source versions saved before the semantic model existed (they listed <code>tables</code> and
+<code>dimensions</code>) are upgraded on read, and the API always returns the current shape.</p>
+<h3>Card</h3>
+<pre><code>chart_type      kpi | barlist | bar | column | line | area | donut | table
+data_source     {asset_id, version_id}                      — the pin
+query           {mode: "sql", sql}                           — raw SQL
+              | {mode: "semantic", dataset, measures, dimensions,
+                 filters, order, limit}                      — business terms
+created_via     builder | sql | copilot
+config          builder state and display options: chart axes, colour scheme,
+                rank numbers, on-card filter controls</code></pre>
+<h3>Dashboard</h3>
+<pre><code>items           [{item_id, card: {asset_id, version_id}, x, y, w, h}]
+filters         [{id, kind: select | multi | period, dimension, label,
+                  parent, source_id, default, locked}]</code></pre>
+<p>Dashboard filter definitions are validated on save: ids unique, a parent must exist and not be the filter itself,
+parents may not form a cycle, and non-period filters need a dimension.</p>
+</section>
+
+<!-- ============================================================ 07 -->
+<section class="ch" id="c7">
+<h2><span class="n">07</span>Visibility and permissions</h2>
+<p>For any asset, a user has one access level, or none:</p>
+<div class="tbl"><table>
+<thead><tr><th>Asset</th><th>User</th><th>Access</th></tr></thead>
+<tbody>
+<tr><td>Global</td><td>admin</td><td><code>admin</code> — can edit directly</td></tr>
+<tr><td>Global</td><td>anyone else</td><td><code>view</code></td></tr>
+<tr><td>Private</td><td>its owner</td><td><code>owner</code></td></tr>
+<tr><td>Private</td><td>shared with them</td><td>the share's <code>view</code> or <code>edit</code></td></tr>
+<tr><td>Private, not shared / archived</td><td>anyone</td><td>none — the API answers 404</td></tr>
+</tbody></table></div>
+<div class="why"><b>Why 404 instead of 403</b><p>A 403 would confirm that a private asset with that id exists. Treating
+"not visible" exactly like "not found" means private work doesn't leak, even by its existence.</p></div>
+<h3>What each level allows</h3>
+<div class="tbl"><table>
+<thead><tr><th>Action</th><th>owner</th><th>edit</th><th>view</th><th>admin (global)</th></tr></thead>
+<tbody>
+<tr><td>Open, render, history, compare, make a copy</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td>Save a new version, restore</td><td>yes</td><td>yes</td><td>—</td><td>yes</td></tr>
+<tr><td>Share or change sharing</td><td>yes</td><td>—</td><td>—</td><td>— (global is visible to all)</td></tr>
+<tr><td>Submit for review</td><td>yes</td><td>—</td><td>—</td><td>— (edits directly)</td></tr>
+<tr><td>Archive</td><td>yes</td><td>—</td><td>—</td><td>yes</td></tr>
+<tr><td>Approve or reject requests</td><td colspan="3">—</td><td>yes</td></tr>
+</tbody></table></div>
+<p>Users with <code>view</code> on a global asset edit it by making a copy (chapter 8). Admins see other people's
+private assets only through change requests submitted to them.</p>
+<h3>Access through a dashboard</h3>
+<p>If you can view a dashboard, you can render the card versions it pins, even if those cards are someone's private
+cards not shared with you. Card data requests carry <code>dashboard_id</code> and <code>version_id</code>; the API checks
+that the version really is pinned on that dashboard's head. The same applies to filter options and the assistant.</p>
+<h3>Sharing</h3>
+<p>Owners share private assets with specific people as <code>view</code> or <code>edit</code> through the Share dialog
+(<code>PUT</code> / <code>DELETE /:kind/:id/shares/:user_id</code>). Changes take effect on the next request. Global
+assets can't be shared (409). Every grant and revoke is audited. The share table already has a
+<code>grantee_type</code> column so team-level sharing can be added without a schema redesign.</p>
+<p>Code: <code>backend/app/governance/service.py</code> (<code>access_level</code>, <code>visible_to</code>,
+<code>get_asset</code>), <code>backend/app/api/asset_routes.py</code>.</p>
+</section>
+
+<!-- ============================================================ 08 -->
+<section class="ch" id="c8">
+<h2><span class="n">08</span>Publishing workflow</h2>
+<p>The global library changes in two ways only: an admin edits a global asset directly (a new version plus an audit
+event), or an admin approves a <strong>change request</strong>. Code: <code>backend/app/governance/requests.py</code>.</p>
+
+<h3>Making a copy (fork)</h3>
+<p><strong>Edit a copy</strong> on a global asset calls <code>POST /:kind/:id/fork</code>. It returns the user's
+existing private copy if they already have one; otherwise it creates a private asset whose
+<code>forked_from_asset_id</code> and <code>forked_from_version_id</code> record which global version it came from, and
+saves version 1 with the same content. The lineage is recorded <em>before</em> that first version is saved, because the
+credential rules for data sources depend on it.</p>
+
+<h3>Submitting</h3>
+<p><strong>Propose changes</strong> (a copy) or <strong>Request publish</strong> (a new private asset) calls
+<code>POST /change-requests</code> with a title and description. The API:</p>
+<ol class="steps">
+  <li>Checks the submitter owns the private asset.</li>
+  <li>Builds the <strong>bundle</strong>: the asset plus every private asset it depends on, recursively (a dashboard's
+  private cards, their private data sources), ordered dependencies first. If a private dependency belongs to someone
+  else, the request is refused — its owner has to publish it first.</li>
+  <li>Refuses if any asset in the bundle is already in an open request.</li>
+  <li>Creates the request and one item per asset. A copy becomes an <code>update_existing</code> item (target = the
+  global asset, base = the version it was copied from); anything else becomes <code>publish_new</code>. Each item
+  records the asset's version at submit time.</li>
+</ol>
+<p>Later edits to the private asset don't change the request automatically. The requester clicks <strong>Update to my
+latest versions</strong> (<code>POST /change-requests/:id/update</code>), which rebuilds the bundle from the current
+versions — like pushing new commits to a pull request.</p>
+
+<h3>Reviewing</h3>
+<p>Admins see all requests on the <strong>Approvals</strong> page (users see their own on <strong>My requests</strong>);
+the sidebar badge shows the pending count. The request page evaluates every item live:</p>
+<ul>
+  <li>the changes compared with the global base (or the full contents, for a new asset);</li>
+  <li>whether global has moved since the copy was made ("based on v1 · global is now v2");</li>
+  <li>whether the item merges cleanly or has conflicts (chapter 9);</li>
+  <li>a live preview of proposed cards (<code>GET /change-requests/:id/items/:item/data</code>), which lets the admin see
+  a card they otherwise couldn't open.</li>
+</ul>
+
+<h3>Approving</h3>
+<p>Approval runs in one database transaction:</p>
+<ol class="steps">
+  <li>Re-evaluate every item. If any has conflicts, stop with 409.</li>
+  <li>Walk the items in dependency order, keeping a map from private asset to its new global version.</li>
+  <li>For each item, take the merged content and <strong>rewrite references</strong>: a card that pointed at a private
+  data source now points at that source's new global version; a dashboard's placements point at the new global cards.</li>
+  <li><code>publish_new</code>: create a new global asset with version 1. <code>update_existing</code>: append a new
+  version to the global asset — unless nothing actually changed, in which case the existing version is reused instead
+  of creating a duplicate.</li>
+  <li>The new version's author is the <em>requester</em>; the change note is "&lt;title&gt; (request #n)". The admin is
+  recorded as reviewer, with their comment and an audit event.</li>
+  <li>The requester's private asset is re-pointed at the published version, so their next edit is proposed as an
+  update to it.</li>
+</ol>
+<p><strong>Reject</strong> requires a comment. <strong>Withdraw</strong> is only for the requester. Both leave the
+private assets untouched.</p>
+<div class="why"><b>Why bundle dependencies</b><p>A global asset must never point at a private one. Without bundling, a
+user publishing a dashboard would have to publish each private card and source separately, in the right order, and
+an approval could half-succeed. Bundling makes it one decision with one outcome.</p></div>
+
+<h3>What the UI shows</h3>
+<p>Every asset response includes <code>pending_request_id</code> and, for copies, a <code>fork</code> block (which global
+asset, which version it was based on, the current global version, and whether it's stale). The governance bar on cards,
+dashboards and data sources uses these to show "Edit a copy", "Copy of global … · vN", "Global is now vM — update from
+global", "In review · request #n", "Propose changes" or "Request publish".</p>
+</section>
+
+<!-- ============================================================ 09 -->
+<section class="ch" id="c9">
+<h2><span class="n">09</span>Merging</h2>
+<p>If global has changed since a copy was made, the request is merged three ways, like a pull request
+(<code>backend/app/governance/merge.py</code>):</p>
+<ul>
+  <li><strong>base</strong> — the global version the copy was made from;</li>
+  <li><strong>ours</strong> — the proposed private version;</li>
+  <li><strong>theirs</strong> — the global head today.</li>
+</ul>
+<h3>Rules, applied recursively through the JSON</h3>
+<ol>
+  <li>If ours and theirs are equal, take it.</li>
+  <li>If only one side differs from base, take that side.</li>
+  <li>If both differ and both are objects, merge key by key.</li>
+  <li>If both are lists of objects with a stable key (<code>item_id</code>, <code>id</code>, <code>name</code>), merge item
+  by item; added items from either side are kept, items removed on one side and unchanged on the other are removed.</li>
+  <li>If both are multi-line strings (SQL), merge by line hunks; hunks that don't overlap combine.</li>
+  <li>Otherwise it's a <strong>conflict</strong> at that path — including "deleted on one side, edited on the other".</li>
+</ol>
+<p>Example: an admin edits the global card's description while the user's copy changes its SQL. Both changes land. If
+both changed the description differently, that path conflicts.</p>
+<h3>Resolving conflicts</h3>
+<p>Conflicts block approval. The requester opens <strong>Update from global</strong> on their copy
+(<code>GET</code>/<code>POST /:kind/:id/rebase</code>). The dialog shows what changed in global since the copy and each
+conflicting path side by side; the user picks "Keep mine" or "Take global" for each. Applying it saves a new version of
+the copy with the merged content, moves the copy's base to the current global head, and updates any open request to
+the new version and base — so the request now merges cleanly.</p>
+</section>
+
+<!-- ============================================================ 10 -->
+<section class="ch" id="c10">
+<h2><span class="n">10</span>Data sources</h2>
+<p>Every source type implements the same small interface — <code>execute</code>, <code>test</code>,
+<code>introspect</code> — so nothing above it needs to know what kind of source a card uses
+(<code>backend/app/connectors/</code>).</p>
+<h3>Postgres</h3>
+<ul>
+  <li>Queried in place. One asyncpg connection pool per source endpoint and process; the pool size is the source's
+  <code>max_concurrency</code>.</li>
+  <li>Every query runs in a <strong>read-only transaction</strong> with <code>SET LOCAL statement_timeout</code> and
+  through a server-side cursor that stops after 1,000 rows, so a huge result is never fully loaded.</li>
+  <li>Connections should use a read-only database role (the demo uses <code>warehouse_reader</code>).</li>
+  <li>Introspection lists tables and views in the <code>public</code> schema with columns and estimated row counts.</li>
+</ul>
+<h3>BigQuery</h3>
+<ul>
+  <li>Queried in place, like Postgres. A source names a <strong>project</strong>, a default <strong>dataset</strong>
+  (unqualified table names in card SQL and the model resolve against it; <code>dataset.table</code> also works) and an
+  optional <strong>location</strong>.</li>
+  <li><strong>Authentication</strong>: a service-account key (the JSON file, stored encrypted like any credential), or
+  the server's own Google identity (application default credentials) — admins only, because it can reach whatever the
+  deployment's account can. Give the service account only <em>BigQuery Data Viewer</em> and <em>BigQuery Job User</em>.</li>
+  <li><strong>Cost cap</strong>: BigQuery bills per byte scanned. Every query carries
+  <code>maximum_bytes_billed</code> (10 GB by default, set per source: 1–500 GB). A query that would scan more fails
+  before it runs, at no cost, with "This query would scan more than N GB". The platform's result cache and BigQuery's
+  own query cache both stay on, so repeated views cost nothing.</li>
+  <li>Filters and dates are <strong>typed named parameters</strong> (<code>@p1</code> as an ARRAY&lt;STRING&gt;, DATE,
+  INT64…), never text in the SQL.</li>
+  <li>Each job has a server-side timeout; if the client's wait runs out first, the job is cancelled. The client
+  library's own retries (ten minutes by default) are capped at the source's timeout, and whole-job retries are off —
+  see "Hung sources" in chapter 14.</li>
+  <li>Introspection lists the dataset's tables with exact row counts from table metadata (free). Nested
+  (<code>RECORD</code>) and repeated columns are left out, since the builder can't use them.</li>
+  <li>The builder's dimension values go through the same cached, capped lookup as filter dropdowns, because on BigQuery
+  every distinct-value query is a billed scan.</li>
+  <li>For development and tests, <code>BIGQUERY_EMULATOR_HOST</code> sends every BigQuery source to a local emulator
+  (<code>npm run infra:bigquery</code>).</li>
+</ul>
+<h3>REST APIs</h3>
+<ul>
+  <li>Not queried live by cards. Records are fetched into a <strong>DuckDB extract</strong>, and cards query the
+  extract. The extract is re-fetched when it's older than the source's <code>cache_ttl_s</code> (and by a scheduled job
+  every minute).</li>
+  <li>Auth: none, bearer token, API key header, or basic auth (the secret is stored encrypted).</li>
+  <li>Pagination: a page-number parameter, an optional page-size parameter, a maximum page count; fetching stops at a
+  short page.</li>
+  <li>A dot path (e.g. <code>data.items</code>) says where the records are; if omitted, the root array or the only array
+  in the root object is used. Nested objects become <code>parent_child</code> columns; lists become JSON text.</li>
+  <li>Limits: redirects are not followed, responses over 20 MB or 100,000 records are refused.</li>
+  <li>Each refresh writes a <strong>new</strong> extract under the key
+  <code>rest/&lt;version&gt;-&lt;settings hash&gt;/&lt;timestamp&gt;.duckdb</code> and moves a Redis pointer
+  (<code>rest:extract:…</code>) to it, so every API and worker process agrees on the current extract. A Redis lock makes
+  one process refresh at a time across the cluster; others keep serving the previous extract meanwhile. The previous
+  extract is kept and older ones are deleted. Keying by version <em>and</em> settings hash means a recycled id never
+  reuses another source's extract.</li>
+</ul>
+<h3>Files</h3>
+<ul>
+  <li>CSV, TSV, Excel (<code>.xlsx</code>) and JSON, up to 50 MB (<code>POST /files</code>).</li>
+  <li>The file is loaded once into its own DuckDB database. Every Excel sheet becomes a table. Column types are inferred;
+  a column with mixed types becomes text.</li>
+  <li>Only the uploader can build a data source from a file.</li>
+  <li>The original and its DuckDB database are built in local scratch space, then stored under
+  <code>uploads/&lt;id&gt;.&lt;ext&gt;</code> and <code>files/&lt;id&gt;.duckdb</code>.</li>
+</ul>
+<h3>Where files live</h3>
+<p>All file access goes through one interface, <code>backend/app/core/storage.py</code> (<code>put_file</code>,
+<code>local_path</code>, <code>exists</code>, <code>delete</code>). Code and the database only ever hold keys, so the
+backend is chosen by configuration:</p>
+<div class="tbl"><table>
+<thead><tr><th></th><th><code>STORAGE_BACKEND=local</code> (default)</th><th><code>STORAGE_BACKEND=s3</code></th></tr></thead>
+<tbody>
+<tr><td>Files live</td><td>Under <code>STORAGE_DIR</code>, a disk every API and worker process mounts</td><td>In <code>S3_BUCKET</code> under <code>S3_PREFIX</code> (S3, MinIO, Cloudflare R2…)</td></tr>
+<tr><td>Local disk needed</td><td>The shared volume</td><td>Scratch and cache only; the cache keeps the most recently used files up to <code>STORAGE_CACHE_MAX_MB</code> (5,000)</td></tr>
+<tr><td>Reads</td><td>The file itself</td><td>First read downloads into the process's cache; later reads use the copy</td></tr>
+<tr><td>Credentials</td><td>—</td><td>The standard AWS chain: an instance or pod role, environment variables, a profile</td></tr>
+</tbody></table></div>
+<p>DuckDB still needs a local file — it runs with external access disabled, so it can't read S3 itself — and
+<code>local_path(key)</code> gives it one. Keys are <strong>write-once</strong>: a new version of something is a new key,
+never an overwrite. That is why a cached copy can never be stale and workers need no coordination.</p>
+<p>Moving an install to S3: migration 0004 has already rewritten older absolute paths into keys; copy the
+<code>uploads/</code> and <code>files/</code> folders into the bucket under the prefix; set <code>STORAGE_BACKEND=s3</code>
+and the <code>S3_*</code> settings everywhere; restart. REST extracts rebuild themselves on first use. The tests run
+uploads and REST extracts against an S3 emulator (moto).</p>
+<h3>DuckDB lockdown</h3>
+<p>Queries against extracts open the DuckDB file <strong>read-only</strong>, then set
+<code>enable_external_access = false</code> and <code>lock_configuration = true</code>. User SQL can see only that
+source's tables: reading local files, exporting, attaching other databases and installing extensions all fail. DuckDB
+shares one in-process instance per file, so when several queries open the same file at once, later ones find the
+settings already locked; they verify external access is off rather than trusting the error. This was a real bug found
+by the concurrency tests.</p>
+<h3>Onboarding flow</h3>
+<ol class="steps">
+  <li>Pick a type (Postgres, BigQuery, REST API, file upload).</li>
+  <li>Enter the connection, or upload the file.</li>
+  <li><strong>Test connection</strong> (<code>POST /data-sources/test</code>) returns the tables, sample records (REST), and
+  a <strong>suggested semantic model</strong>. The password typed into the form is used only for the test and isn't
+  stored.</li>
+  <li>Edit the model (chapter 12), set the refresh interval and the <strong>query timeout</strong> (30 seconds to 5
+  minutes; a slow warehouse may need more than the default 30), and save as a private source. The password is now
+  stored encrypted.</li>
+  <li>Request publish, like any other asset.</li>
+</ol>
+<p>The suggested model hides <code>id</code> and numeric <code>*_id</code> columns, makes the first date/time column the
+time dimension and records whether it is a DATE, DATETIME or TIMESTAMP, makes numeric columns summed measures (except names like year, vintage, month, code), makes everything else a
+dimension, and always adds a row-count measure.</p>
+<p>The card builder's catalog comes from <code>GET /datasets</code>: for each visible source, its tables, model, and the
+distinct values of its dimensions, cached for five minutes per source version.</p>
+</section>
+
+<!-- ============================================================ 11 -->
+<section class="ch" id="c11">
+<h2><span class="n">11</span>Credentials and source safety</h2>
+<h3>How credentials are stored</h3>
+<p>Passwords, tokens and API keys are encrypted with Fernet (derived from <code>SECRET_KEY</code>) into the
+<code>secrets</code> table. Specs only ever contain a reference, <code>sec:&lt;id&gt;</code>. The plaintext is decrypted
+inside the connector when connecting (cached in memory for 60 seconds) and is never returned by the API or written into
+a version. When editing a source, leaving the password field blank keeps the stored credential; clients can't set
+references themselves — the server ignores any they send.</p>
+<p>Two other reference forms exist: <code>env:NAME</code> reads a server setting (used by the demo source so its host
+works both on a laptop and in Docker), and <code>tmp:&lt;id&gt;</code> holds a password typed into the test form for the
+duration of one test.</p>
+<h3>Rules checked on every data-source save</h3>
+<p>These run inside <code>save_version</code>, so they apply whether the version comes from an edit, a restore, an
+update-from-global or an approval (<code>backend/app/connectors/policy.py</code>).</p>
+<div class="tbl"><table>
+<thead><tr><th>Rule</th><th>Prevents</th></tr></thead>
+<tbody>
+<tr><td>A stored secret can be used only by its owner, or kept unchanged against <strong>the same endpoint</strong> it
+was saved for (host, port, database, user — or URL host and auth type for REST), as found in the asset's own head, the
+global version it was copied from, or that global asset's head.</td><td>Copying a published source, pointing it at your
+own server, and receiving someone else's password.</td></tr>
+<tr><td>A BigQuery key can be reused only against the <strong>same project</strong>; only admins may use the server's
+own Google identity.</td><td>Pointing a copied source at another project with someone else's key, or borrowing the
+deployment's own cloud access.</td></tr>
+<tr><td>Only admins may introduce <code>env:</code> references.</td><td>Reading server settings such as the database
+URL through a crafted source.</td></tr>
+<tr><td>Plain-text credentials in specs are rejected.</td><td>Passwords ending up in version history.</td></tr>
+<tr><td>Files can be used only by their uploader (or kept on an asset that already used them).</td><td>Reading another
+user's uploaded data.</td></tr>
+<tr><td>Non-admins can't target loopback, private, link-local or reserved addresses, unless
+<code>ALLOW_PRIVATE_NETWORK_SOURCES=true</code> (local development).</td><td>Server-side request forgery: probing internal
+services, cloud metadata endpoints, or the platform's own databases.</td></tr>
+</tbody></table></div>
+<div class="warn"><b>Known gap</b><p>The private-address check happens when a source is saved or tested, not on every
+connection, so a host whose DNS later changes to a private address (DNS rebinding) isn't caught.</p></div>
+</section>
+
+<!-- ============================================================ 12 -->
+<section class="ch" id="c12">
+<h2><span class="n">12</span>Semantic layer</h2>
+<p>The semantic model is the business vocabulary of a data source. It's stored in each data-source version, so changing
+it is versioned and reviewed like anything else.</p>
+<pre><code>dataset     transactions — "Charge transactions" — one row per card charge
+time        txn_date
+dimensions  segment "Segment"   sub_segment "Sub-segment"   industry "Industry"
+            product "Card product"   merchant "Merchant"   country "Merchant country"
+            vintage "Vintage" (number)   txn_date "Transaction date" (date)
+measures    total_spend  = SUM(amount)   "Total spend"   (currency)
+            txn_count    = COUNT(*)      "Transactions"
+            avg_ticket   = AVG(amount)   "Average ticket" (currency)</code></pre>
+<p>The model editor shows each table with an "expose" switch, a business name and description, and every column with a
+role (dimension, time, sum, average, hidden), label and description. Custom measures such as <code>COUNT(*)</code> are
+kept.</p>
+
+<h3>Semantic cards</h3>
+<p>The card builder saves a <strong>semantic query</strong> rather than SQL:</p>
+<pre><code>{ "mode": "semantic", "dataset": "transactions",
+  "measures":   [{"name": "total_spend"}],                 // or {"agg": "SUM", "column": "amount"}
+  "dimensions": [{"name": "txn_date", "grain": "month"}],  // up to two
+  "filters":    [{"dimension": "product", "values": ["Gold"]}],
+  "order": "label_asc", "limit": 12 }</code></pre>
+<p>The compiler (<code>backend/app/semantic/query.py</code>) turns it into SQL for the source's dialect on every run:</p>
+<ul>
+  <li>Dimensions become <code>label</code> (and <code>sublabel</code> for a second one). Time grains: day, week, month,
+  quarter, year — <code>to_char</code> on Postgres, <code>strftime</code> on DuckDB.</li>
+  <li>One measure is named <code>value</code> (KPIs, year-over-year and charts rely on that); several keep their labels.</li>
+  <li>Model measure expressions are parsed with SQLGlot and must be plain aggregates — no subqueries, no writes, at
+  least one aggregate function. A measure such as <code>(SELECT 1)</code> is rejected when used.</li>
+  <li>Unknown datasets, measures or dimensions, and a time grain on a non-time dimension, are rejected when the card is
+  saved (422).</li>
+  <li>Default order: by label for time series, by value descending otherwise.</li>
+</ul>
+<h3>One dialect layer</h3>
+<p>Postgres, DuckDB and BigQuery disagree on the basics, so every piece of generated SQL goes through one module,
+<code>backend/app/semantic/dialects.py</code>:</p>
+<div class="tbl"><table>
+<thead><tr><th></th><th>Postgres</th><th>DuckDB</th><th>BigQuery</th></tr></thead>
+<tbody>
+<tr><td>Column / table</td><td><code>"col"</code></td><td><code>"col"</code></td><td><code>`col`</code> (double quotes are strings)</td></tr>
+<tr><td>String with a quote</td><td><code>'O''Brien'</code></td><td><code>'O''Brien'</code></td><td><code>'O\'Brien'</code></td></tr>
+<tr><td>Parameter</td><td><code>$1</code></td><td><code>$1</code></td><td><code>@p1</code> (typed)</td></tr>
+<tr><td>Value in a list</td><td><code>= ANY($1::text[])</code></td><td><code>list_contains(…)</code></td><td><code>IN UNNEST(@p1)</code></td></tr>
+<tr><td>Month label</td><td><code>to_char(col, 'YYYY-MM')</code></td><td><code>strftime(col, '%Y-%m')</code></td><td><code>FORMAT_DATE('%Y-%m', DATE(col))</code></td></tr>
+<tr><td>Date window on a TIMESTAMP</td><td><code>col &gt;= $1::date</code></td><td><code>col &gt;= CAST($1 AS DATE)</code></td><td><code>col &gt;= TIMESTAMP(@p1)</code></td></tr>
+</tbody></table></div>
+<p>SQLGlot does the quoting and escaping for each dialect, and parses and validates SQL in the source's dialect.</p>
+
+<h3>Raw-SQL cards</h3>
+<p>Power users can still write SQL. SQLGlot parses it and allows exactly one read-only statement: <code>SELECT</code>,
+<code>WITH</code>, <code>UNION</code> are fine; anything that writes, <code>SELECT … INTO</code>, <code>COPY</code>,
+<code>ATTACH</code>, <code>PRAGMA</code>, <code>SET</code>, BigQuery's <code>EXPORT DATA</code> (writes to Cloud
+Storage), scripts (<code>DECLARE</code>, temporary functions), data-modifying CTEs and multiple statements are rejected.
+Semicolons inside string literals are fine (the original prototype rejected them). Query parameters of any style
+(<code>$1</code>, <code>@name</code>, <code>?</code>) are reserved for filters.</p>
+<p>Where dashboard filters should apply, the SQL contains a <code>{{filters}}</code> marker, e.g.
+<code>WHERE 1=1 {{filters}}</code>. It is replaced with conditions bound as parameters, using the model of whichever
+modelled table the SQL reads from.</p>
+<p><strong>View SQL</strong> on a semantic card, and <strong>Open in SQL editor</strong> from the builder, show an editable
+form: static filters as safely quoted literals, plus the <code>{{filters}}</code> marker, so it runs unchanged as a raw
+SQL card.</p>
+<div class="why"><b>Why a semantic layer</b><p>It does three jobs with one definition: the builder offers "Total spend by
+Merchant" instead of column names; dashboard filters can bind by meaning across different sources; and the assistant
+can reason about and query data by business names, through a compiler that only produces bounded, read-only,
+aggregated SQL.</p></div>
+</section>
+
+<!-- ============================================================ 13 -->
+<section class="ch" id="c13">
+<h2><span class="n">13</span>Filters</h2>
+<h3>How a filter reaches SQL</h3>
+<p>A filter value travels as business terms: <code>{"segment": ["GCS"], "sub_segment": ["SBS", "MM"]}</code> plus a date
+window. Each card binds it through its own source's model (<code>backend/app/semantic/filters.py</code>):</p>
+<ul>
+  <li>a dimension the dataset has becomes a list-membership condition in the source's dialect (see chapter 12) —
+  values always bound as parameters;</li>
+  <li>the date window binds to the dataset's time dimension. For a DATE column the window is inclusive
+  (<code>&gt;= from AND &lt;= to</code>). For DATETIME and TIMESTAMP columns it runs to the start of the day after
+  <code>to</code> (<code>&lt; to + 1 day</code>), so the whole last day counts, and on BigQuery the bound is converted
+  to the column's type, since BigQuery won't compare a TIMESTAMP with a DATE;</li>
+  <li>anything the dataset can't bind is <strong>reported</strong>, not dropped. Every card result carries
+  <code>meta.applied</code> and <code>meta.ignored</code>.</li>
+</ul>
+<p>A card with ignored filters shows a <strong>Partly filtered</strong> chip whose tooltip names the filters and why.
+Year-over-year figures are only computed when the period actually applied.</p>
+
+<h3>Dashboard filter definitions</h3>
+<p>Each dashboard has its own filters, edited in edit mode under <strong>Filters</strong> and saved as a new version
+(<code>PUT /dashboards/:id/filters</code>):</p>
+<div class="tbl"><table>
+<thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>dimension</code></td><td>The business dimension it filters, e.g. <code>segment</code></td></tr>
+<tr><td><code>kind</code></td><td><code>select</code> (one value), <code>multi</code> (several), or <code>period</code> (date window)</td></tr>
+<tr><td><code>parent</code></td><td>Another filter that narrows this one's options (Segment → Sub-segment)</td></tr>
+<tr><td><code>locked</code></td><td>Cards may not override it</td></tr>
+<tr><td><code>default</code></td><td>Initial value; for the period, a preset such as <code>ytd</code></td></tr>
+<tr><td><code>source_id</code></td><td>Optional: which source supplies the options (default: the first card source whose model has the dimension)</td></tr>
+</tbody></table></div>
+<p>The editor's dimension list comes from <code>GET /dashboards/:id/filterable</code>, which gathers dimensions across all
+the dashboard's card sources and notes when several sources share one.</p>
+
+<h3>Cascading options</h3>
+<p>A dropdown's options come from <code>GET /dashboards/:id/filter-options/:filter?selections=</code>: the distinct values
+of the dimension, narrowed by the current selection of every ancestor. With Segment = GCS, Sub-segment offers only
+G&amp;L, MM and SBS. Changing a parent clears all of its descendants. Options are cached for five minutes per source
+version and selection.</p>
+
+<h3>Card-level overrides</h3>
+<p>A card can expose its own filter dropdowns for any dimension of its source (configured in Card Studio under
+"Filter dropdowns on the card", plus an optional period dropdown). The effective value for a card is:</p>
+<ol>
+  <li>the card's own dropdown — if the card shows that dimension and the dashboard filter isn't locked;</li>
+  <li>otherwise the dashboard's selection;</li>
+  <li>otherwise the filter's default;</li>
+  <li>otherwise no filter.</li>
+</ol>
+<p>Card overrides reset whenever the dashboard filters change. On the card, later dropdowns narrow to earlier ones,
+mirroring the dashboard's parent rule. Options come from <code>GET /cards/:id/filter-options</code>.</p>
+
+<h3>Period presets</h3>
+<p><code>ytd</code> (2026-01-01 to 2026-06-11, matching the demo data), <code>all</code>, months, quarters ("Q1 '26")
+and full years ("FY '25"). The frontend and the warm-up job share the same definitions
+(<code>PeriodSelect.tsx</code>, <code>backend/app/semantic/periods.py</code>).</p>
+</section>
+
+<!-- ============================================================ 14 -->
+<section class="ch" id="c14">
+<h2><span class="n">14</span>Running queries at scale</h2>
+<p>This chapter follows one dashboard load end to end. Code: <code>backend/app/execution/jobs.py</code>,
+<code>backend/app/api/dashboards.py</code> (render), <code>apps/web/src/lib/render.ts</code>.</p>
+
+<h3>1 — One request per dashboard</h3>
+<p>Each card on the page asks a shared <strong>render batcher</strong> for its data, with its effective filters. The
+batcher collects every request made within 25 ms and sends one <code>POST /dashboards/:id/render</code> with all of
+them. The response is a stream of server-sent events: an <code>event: card</code> for each card as soon as it's ready,
+then <code>event: done</code>. Cards resolve one by one, so cached cards paint immediately while the rest compute.</p>
+<p>The API checks that each requested placement is on the dashboard, loads the pinned card and source versions in two
+queries, and starts all the lookups concurrently.</p>
+
+<h3>2 — The cache lookup</h3>
+<p>Each card becomes a <strong>job</strong> carrying everything a worker needs: the card version id and spec, the
+source version id and spec, and the filters. Its cache key is:</p>
+<pre><code>res:&lt;card_version_id&gt;:&lt;source_version_id&gt;:&lt;hash of canonical filters&gt;</code></pre>
+<p>Because both ids are immutable versions, a cached entry can only ever belong to exactly that definition. Because
+every user sees the same rows, one entry serves everyone.</p>
+<div class="tbl"><table>
+<thead><tr><th>Lookup result</th><th>What happens</th></tr></thead>
+<tbody>
+<tr><td>Fresh hit (before <code>fresh_until</code>)</td><td>Returned immediately.</td></tr>
+<tr><td>Stale hit (past the TTL, within 6 h grace)</td><td>Returned immediately, marked stale; a refresh is triggered in the background. The card shows "Refreshing · as of …" and checks again after 2.5 s (up to three times).</td></tr>
+<tr><td>Miss</td><td>Single-flight: see below.</td></tr>
+</tbody></table></div>
+
+<h3>3 — Single-flight</h3>
+<p>On a miss the API first subscribes to the key's completion channel, then tries <code>SET lock:&lt;key&gt; NX</code>.
+Whoever gets the lock dispatches the job; everyone else just waits on the channel. When 500 people open the same
+uncached view at the same moment, the source sees one query.</p>
+<ul>
+  <li>The lock expires after the source's query timeout plus 20 seconds. The queued job expires at the same moment: if no
+  worker has started it by then, its waiters have already re-dispatched it or given up, so it is dropped instead of
+  piling up.</li>
+  <li>Waiters wait as long as the query may legitimately run: the source's timeout plus 25 seconds, and never less than
+  <code>RESULT_WAIT_S</code> (60 s). If a waiter sees the lock disappear without a result — the worker crashed or the
+  message was lost — it takes over and dispatches the job itself.</li>
+  <li>If the job fails, its error is stored for 30 seconds and every waiter receives it.</li>
+</ul>
+
+<h3>4 — The worker</h3>
+<ol class="steps">
+  <li>A Celery worker takes the job from the <code>interactive</code> queue. Each worker process keeps one event loop
+  for its whole life, so database pools and the Redis client are reused across jobs.</li>
+  <li>If the source's <strong>circuit breaker</strong> is open, fail fast.</li>
+  <li>Take a <strong>source slot</strong>: a Redis counter per source endpoint, capped at the source's
+  <code>max_concurrency</code> across all workers. If no slot frees up in time, fail with "the data source is busy".</li>
+  <li>Run the card: compile the query, bind the filters, execute. If a full date window applied, run the same query one
+  year earlier for year-over-year figures (a single delta for KPIs, per-row deltas otherwise). The whole run has a hard
+  deadline of the source's timeout plus 10 seconds, whatever the connector.</li>
+  <li>Write the result with <code>fresh_until = now + cache_ttl_s</code>, expiring after TTL + 6 h; record the compute
+  time; release the lock; publish "done".</li>
+</ol>
+<p>Failures that come from the source count towards the breaker: five within a minute opens it for 30 seconds.
+Compile and validation errors don't count against the source.</p>
+
+<h3>5 — Scheduled work (Celery beat)</h3>
+<ul>
+  <li>Every 60 s, on the <code>refresh</code> queue: re-fetch REST extracts that are past their TTL.</li>
+  <li>Every 5 min: <strong>warm-up</strong> — for each global dashboard, trigger every card at the dashboard's default
+  filters, so the first viewer finds them cached.</li>
+</ul>
+<p>The separate <code>refresh</code> queue means scheduled work never delays interactive dashboard loads. Each scheduled
+run expires with its interval: if the workers are busy, a round is skipped rather than queued behind the others.</p>
+
+<h3>6 — Hung sources</h3>
+<p>On 5 October 2026 a BigQuery endpoint became unreachable in development. Google's client library retries failed calls
+for up to ten minutes by default, and wraps job submission in a private ten-minute retry of its own. Every worker
+process sat retrying, so cards on every <em>other</em> source queued behind them and timed out after 60 seconds, while
+waiting requests kept queueing fresh copies — 272 jobs in all. Nothing failed, so the circuit breaker never opened.</p>
+<p>Four layers now stop one dead source from taking every worker:</p>
+<div class="tbl"><table>
+<thead><tr><th>Layer</th><th>Where</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td>Bounded client retries</td><td><code>connectors/bigquery.py</code></td><td>API calls retry only within the source's timeout; whole-job retries off</td></tr>
+<tr><td>Job deadline</td><td><code>execution/jobs.py</code></td><td>Any card run ends at the source's timeout + 10 s, so failures reach the breaker</td></tr>
+<tr><td>Task time limits</td><td><code>worker/celery_app.py</code></td><td>Card tasks: soft limit <code>QUERY_TIMEOUT_S</code> + 60 s, hard + 90 s (the process is replaced)</td></tr>
+<tr><td>Expiring jobs</td><td><code>execution/queue.py</code>, beat schedule</td><td>Jobs nobody waits for anymore are dropped instead of building a backlog</td></tr>
+</tbody></table></div>
+<p>With these in place, stopping the emulator on purpose gave: BigQuery cards failed within their 30-second timeout,
+the breaker paused the source after five failures, and a Postgres card answered in 0.07 seconds throughout.</p>
+
+<h3>7 — Long-running queries</h3>
+<p>A warehouse query may legitimately take minutes. Each source sets its timeout in its editor (30 seconds by default, up
+to 5 minutes); <code>QUERY_TIMEOUT_S</code> (default 300) is only a server-wide ceiling. Everything else derives from the
+source's timeout: the job deadline (+10 s), the single-flight lock (+20 s), how long viewers wait (+25 s), the BigQuery
+retry budget, and how long a per-source slot counter lives, so a long query can't let the concurrency cap reset
+mid-query. A proxy in front of the app must allow requests that long too (the INSTALL guide's nginx example uses 330 s).</p>
+
+<h3>8 — The queue is swappable</h3>
+<p>Work is handed to a queue in exactly one place, <code>backend/app/execution/queue.py</code>: <code>submit(task,
+payload, queue, expires_s)</code> on the producer side and <code>handle(task, payload)</code> on the consumer side. A job
+is a self-contained JSON payload and duplicates are harmless (they recompute the same cache entry), so any at-least-once
+queue works.</p>
+<div class="tbl"><table>
+<thead><tr><th>Option</th><th>Change</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>Celery on Redis</td><td>—</td><td>Current; right for this workload</td></tr>
+<tr><td>Celery on RabbitMQ or SQS</td><td><code>CELERY_BROKER_URL=amqp://…</code> or <code>sqs://…</code></td><td>The easy upgrade to a dedicated broker</td></tr>
+<tr><td>Redis Streams / SQS with a small asyncio consumer</td><td>A new backend in <code>queue.py</code> plus a consumer calling <code>handle()</code></td><td>Fewer moving parts, if Celery ever becomes a burden</td></tr>
+<tr><td>Kafka</td><td>As above</td><td>Not for this job queue</td></tr>
+</tbody></table></div>
+<div class="why"><b>Why not Kafka for the jobs</b><p>A dashboard view fans out about ten queries that must start within
+milliseconds; some take 50 ms, some minutes, and any free worker should take the next. That is a work queue. Kafka is a
+log: work is pinned to partitions, so one slow query blocks everything behind it, consumers are capped by partition count,
+and there are no per-message retries or priorities. It would fit <em>alongside</em> the queue, as a stream of events such
+as "version published" or "request approved" for other systems.</p></div>
+
+<h3>Measured baseline</h3>
+<div class="tbl"><table>
+<thead><tr><th>Scenario</th><th>Users</th><th>Dashboards/s</th><th>p50</th><th>p95</th><th>Failures</th><th>Cache hits</th></tr></thead>
+<tbody>
+<tr><td>Realistic filter mix</td><td>1,000</td><td>229</td><td>750 ms</td><td>2.3 s</td><td>0</td><td>99.1%</td></tr>
+<tr><td>Every request a new combination</td><td>100</td><td>23</td><td>2.2 s</td><td>2.7 s</td><td>0</td><td>7%</td></tr>
+</tbody></table></div>
+<p>Everything ran on one laptop. In the mixed run, 167,000 card lookups needed 1,007 queries; the latency came from CPU
+contention (even the uncached "dashboard detail" call had the same median). In the cold run queries took ~15 ms; the
+rest was waiting for one of eight worker processes. Run it yourself with the commands in
+<code>docs/loadtest.md</code>.</p>
+<div class="why"><b>Why Celery and Redis</b><p>Redis already had to exist for the cache; using it as the broker,
+the lock service and the completion channel keeps the moving parts to one. Celery adds dependable delivery
+(acknowledge-after-completion, so a crashed worker's job is redelivered), separate queues and a scheduler. Its limit is
+one job per prefork process, which matters only for cold, I/O-heavy traffic (chapter 20).</p></div>
+</section>
+
+<!-- ============================================================ 15 -->
+<section class="ch" id="c15">
+<h2><span class="n">15</span>Dashboard assistant</h2>
+<p>A chat button floats in the bottom-right of every dashboard. Code: <code>backend/app/assistant/</code>,
+<code>backend/app/api/assistant.py</code>, <code>apps/web/src/components/AssistantWidget.tsx</code>.</p>
+
+<h3>What it answers from</h3>
+<p>When you ask a question, the panel sends the question, the conversation so far, the current filter summary
+("Segment: GCS · 2026 YTD") and every card with its filters. The API then builds the <strong>context</strong>:</p>
+<ul>
+  <li>the dashboard's name, description and filter definitions;</li>
+  <li>every card as shown: name, description, chart type, what it breaks down by, which filters applied or didn't, up
+  to 25 result rows, and year-over-year figures — fetched through the same cache as the dashboard, so it's exactly what
+  you're looking at;</li>
+  <li>the semantic catalog of each source on the dashboard (datasets, dimensions, measures, with labels and
+  descriptions), each given a short key such as <code>s1</code>.</li>
+</ul>
+<p>The model never receives raw source rows.</p>
+
+<h3>Three modes</h3>
+<div class="tbl"><table>
+<thead><tr><th>Mode</th><th>Setting</th><th>Behaviour</th></tr></thead>
+<tbody>
+<tr><td>Offline (default)</td><td><code>LLM_PROVIDER=offline</code></td><td>No model calls. Rules over the context answer
+totals, which segment or item leads, what's growing fastest, top N, how concentrated spend is, and "what am I looking
+at", with filter buttons when a matching dashboard filter exists.</td></tr>
+<tr><td>OpenAI-compatible</td><td><code>LLM_PROVIDER=openai</code>, <code>LLM_BASE_URL</code>, <code>LLM_MODEL</code>, <code>LLM_API_KEY</code></td><td>Any endpoint speaking the OpenAI chat-completions format — e.g. Ollama at <code>http://localhost:11434/v1</code> with a tool-calling model.</td></tr>
+<tr><td>Azure OpenAI</td><td><code>LLM_PROVIDER=azure</code>, <code>AZURE_OPENAI_ENDPOINT</code>, <code>AZURE_OPENAI_API_VERSION</code>, <code>LLM_API_KEY</code>, <code>LLM_MODEL</code> (deployment name)</td><td>The production target.</td></tr>
+</tbody></table></div>
+
+<h3>The tool loop</h3>
+<p>With a model configured, the API sends a system prompt, the context, the history and the question, plus four tools
+in OpenAI function format. The tools run on the server:</p>
+<div class="tbl"><table>
+<thead><tr><th>Tool</th><th>Does</th><th>Limits</th></tr></thead>
+<tbody>
+<tr><td><code>query_data</code></td><td>A semantic query (dataset, measures, dimensions, time grain, filters, dates, order) against one of the dashboard's sources, through the same compiler as cards</td><td>Only sources used on this dashboard; ≤ 50 rows</td></tr>
+<tr><td><code>list_dimension_values</code></td><td>Valid values of a dimension, with optional search</td><td>≤ 100 values</td></tr>
+<tr><td><code>get_card</code></td><td>Re-runs one of the dashboard's cards with other filters or dates, via the cache</td><td>Only this dashboard's cards</td></tr>
+<tr><td><code>suggest_filter</code></td><td>Adds a "Filter to …" button to the answer</td><td>Only this dashboard's filters; nothing changes until the user clicks</td></tr>
+</tbody></table></div>
+<p>The loop runs up to six rounds of tool calls; on the last round tools are switched off and the model must answer.
+Tool errors (unknown source, unknown measure, bad arguments) are returned to the model as text so it can correct
+itself. <code>&lt;think&gt;</code> blocks that some local models emit are removed.</p>
+
+<h3>What comes back</h3>
+<ul>
+  <li><strong>answer</strong> — the text;</li>
+  <li><strong>sources</strong> — the cards it cited: cards named in the answer, in order, plus cards re-run with
+  <code>get_card</code>. In the panel these are the "From" chips; clicking one scrolls to the card and flashes it;</li>
+  <li><strong>actions</strong> — filter buttons; clicking applies the dashboard filter (and clears dependent filters);</li>
+  <li><strong>tool_calls</strong> — what it ran, shown as a small "Ran 2 queries" line.</li>
+</ul>
+
+<h3>Safeguards</h3>
+<ul>
+  <li>Card names, descriptions and tool results are written by users; the context is labelled as data and the system
+  prompt says instructions inside it are to be treated as text.</li>
+  <li>Every tool is read-only, scoped and capped. The only effect on the page is a button the user chooses to click.</li>
+  <li>20 questions per user per minute.</li>
+  <li>Each question is audited with its length and the tools used; the answer isn't stored.</li>
+  <li>Model problems (unreachable, rejected key, unknown deployment, rate limit, timeout) return a clear 503 message.</li>
+</ul>
+<div class="why"><b>Why tools instead of sending the data</b><p>Real sources are far too large to send, and sending them
+would bypass permissions. Giving the model the catalog plus bounded tools means it can ask precise questions, every
+answer is computed by the same governed engine as the cards, and nothing it does can exceed the asking user's access.</p></div>
+</section>
+
+<!-- ============================================================ 16 -->
+<section class="ch" id="c16">
+<h2><span class="n">16</span>Frontend</h2>
+<h3>Pages</h3>
+<div class="tbl"><table>
+<thead><tr><th>Route</th><th>Page</th></tr></thead>
+<tbody>
+<tr><td><code>/login</code></td><td>Sign-in (directory users)</td></tr>
+<tr><td><code>/dashboards</code></td><td>Dashboard list with All / Global / Mine / Shared tabs</td></tr>
+<tr><td><code>/dashboards/:id</code></td><td>Dashboard: filter bar, grid, view/edit, history, share, governance bar, update banner, filter editor, assistant</td></tr>
+<tr><td><code>/cards</code></td><td>Card library with tabs, previews, history, share, review status</td></tr>
+<tr><td><code>/cards/new</code>, <code>/cards/:id/edit</code></td><td>Card Studio: builder (semantic), SQL editor (Monaco), mock copilot, live preview</td></tr>
+<tr><td><code>/data-sources</code>, <code>/data-sources/new</code>, <code>/data-sources/:id</code></td><td>Source list and editor: type picker, connection form or upload, test, model editor</td></tr>
+<tr><td><code>/requests</code>, <code>/requests/:id</code></td><td>Approvals (admin) / My requests, and the request detail with diffs, previews and actions</td></tr>
+</tbody></table></div>
+<h3>Building blocks</h3>
+<ul>
+  <li><code>lib/api.ts</code> — every API call, with the bearer token and 401 handling; every successful write notifies
+  the query cache. <code>lib/queries.ts</code> — cached server data (below). <code>lib/dashboardEditor.ts</code> — the
+  dashboard page's reducer. <code>lib/render.ts</code> — the streamed render batcher. <code>lib/filters.ts</code> — filter defaults, ancestors and descendants, effective values.
+  <code>lib/builder.ts</code> — builder state to semantic query.</li>
+  <li><code>GovernanceBar</code>, <code>VersionHistory</code> + <code>DiffList</code>, <code>ShareDialog</code>,
+  <code>RebaseDialog</code> — the governance UI shared by all three asset kinds.</li>
+  <li><code>FilterBar</code> + <code>FilterSelect</code> + <code>PeriodSelect</code> + <code>DashboardFilterEditor</code> — filters.</li>
+  <li><code>CardFrame</code> + <code>ChartRenderer</code> — every card: header chips ("Update", "Partly filtered"), menu
+  (export, view SQL, send snapshot), "as of" time.</li>
+  <li><code>AssistantWidget</code> — the floating assistant.</li>
+  <li><code>ErrorBoundary</code> — keeps one broken page from blanking the app; resets on navigation.</li>
+</ul>
+<p>The UI decides what to offer from fields the API sends with every asset — <code>access</code>, <code>can_edit</code>,
+<code>scope</code>, <code>pending_request_id</code>, <code>fork</code> — and the API enforces the same rules again on
+every call.</p>
+
+<h3>Server data and editing state</h3>
+<p>Almost everything on screen is server data (assets, versions, requests), and what isn't belongs to one page (filter
+selections, edit mode). So there is no global store such as Redux or MobX. Instead:</p>
+<ul>
+  <li><strong>TanStack Query</strong> (<code>lib/queries.ts</code>) caches lists, details, versions, shares, requests,
+  filter options and previews; shares them between components; de-duplicates requests; and refreshes in the background.
+  Pages open instantly from cache when you come back to them.</li>
+  <li><strong>Writes refresh what's on screen.</strong> Every successful write (save, share, fork, approve, restore…)
+  marks governance data stale, so lists, the approvals badge and "update available" update without manual reloads.
+  Query keys starting with <code>data</code> — card previews, filter options, compiled SQL — are keyed by immutable
+  versions and never invalidated by writes. Failed requests retry once, but not on 4xx errors. Signing out clears the
+  cache.</li>
+  <li><strong>The dashboard page uses a reducer</strong> (<code>lib/dashboardEditor.ts</code>) for its layout, edit mode
+  and filter selections. A background refresh replaces the layout only when there are no unsaved changes, and resets
+  filters only when the dashboard's filter definitions themselves changed.</li>
+  <li><strong>The card and data-source editors fill their forms once per version</strong> and don't refetch on window
+  focus, so a background refresh can never overwrite edits in progress; a save, restore or update from global (each a
+  new version) refills the form.</li>
+</ul>
+
+<h3>Demo recorder</h3>
+<p><strong>Record demo</strong> (bottom of the sidebar) captures a guided walkthrough and exports it as a single
+self-contained HTML reel. Code: <code>apps/web/src/features/demo-recorder/</code>.</p>
+<ol class="steps">
+  <li>Starting a session shows a floating recorder bar on every page; it can be dragged and remembers its position.</li>
+  <li><strong>Capture scene</strong> uses the browser's Screen Capture API (<code>getDisplayMedia</code>, current tab
+  offered first; one permission prompt per session). All recorder UI is hidden, the recorder waits for a frame painted
+  after that, grabs it, and shows it frozen so the user can drag a region or keep the whole screen. <strong>3 s</strong>
+  delays the capture so a menu can be opened or hovered first. Clicks on the bar don't close the app's open menus.</li>
+  <li>The scene editor sets a title and caption and holds one or more images; for each image, a click sets where the
+  camera zooms, plus the move (zoom in, zoom out, still) and how long it shows.</li>
+  <li>The scene list reorders (drag or arrows), re-captions, re-captures and deletes.</li>
+  <li><strong>Finish</strong> names the reel and offers Preview and Download. The file embeds every image as WebP or
+  JPEG plus the player's code and styles; it needs no network.</li>
+</ol>
+<p>The reel plays like a slide show: it advances on its own with a smooth zoom or pan between two camera positions
+(Web Animations, clamped so the image always fills its frame), shows captions, and supports Space to pause, ← → to
+step, Home and End, F for full screen, and a clickable progress track. A recording is kept in the browser's IndexedDB
+per user, so it survives navigation and reloads; nothing is uploaded.</p>
+<div class="why"><b>Why screen capture rather than redrawing the page</b><p>Rendering the page from its HTML
+(html-to-image) needs no permission prompt, but it gets fixed elements such as the sidebar wrong once the page is
+scrolled, and fonts and charts come out imperfectly. Screen capture costs one prompt and gives exact pixels.</p></div>
+<p>The feature is self-contained: the app imports it once (one import and one JSX line in <code>App.tsx</code>), it loads
+only when someone starts recording, and building with <code>VITE_DEMO_RECORDER=false</code> leaves it out of the bundle
+entirely.</p>
+</section>
+
+<!-- ============================================================ 17 -->
+<section class="ch" id="c17">
+<h2><span class="n">17</span>Security summary</h2>
+<div class="tbl"><table>
+<thead><tr><th>Threat</th><th>Control</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td>Forged or expired sessions</td><td>RS256 JWT verified against JWKS; issuer, audience, expiry</td><td>3</td></tr>
+<tr><td>Seeing others' private work</td><td>Per-asset access levels; invisible = 404</td><td>7</td></tr>
+<tr><td>Global assets depending on private ones</td><td>Rejected on save; dependencies bundled on publish</td><td>5, 8</td></tr>
+<tr><td>Rewriting history</td><td>Immutable versions (DB trigger); audit log</td><td>4, 5</td></tr>
+<tr><td>SQL injection</td><td>One read-only statement; filter values bound; identifiers quoted; measures must be aggregates</td><td>12, 13</td></tr>
+<tr><td>Writes or file access via queries</td><td>Postgres read-only transaction and role; DuckDB read-only with external access off</td><td>10</td></tr>
+<tr><td>Expensive queries</td><td>Timeouts, 1,000-row cursor cap, per-source concurrency, breaker</td><td>10, 14</td></tr>
+<tr><td>One hung source blocking all cards</td><td>Bounded client retries, job deadline, task time limits, expiring jobs</td><td>14</td></tr>
+<tr><td>Workers silently stuck</td><td>Progress-based health check; platform restarts workers; alert on status</td><td>18</td></tr>
+<tr><td>Credential theft</td><td>Encrypted, never returned, endpoint-bound reuse, admin-only <code>env:</code></td><td>11</td></tr>
+<tr><td>Runaway BigQuery cost</td><td>Per-query bytes-billed cap; shared result cache; BigQuery query cache</td><td>10</td></tr>
+<tr><td>Server-side request forgery</td><td>Private-address guard for non-admins; no redirects</td><td>11</td></tr>
+<tr><td>Assistant misuse</td><td>Scoped read-only tools, row caps, click-to-apply actions, rate limit, audit</td><td>15</td></tr>
+<tr><td>Probe and metrics exposure</td><td>Outside <code>/api</code>, so the web server never forwards them; counts only</td><td>18</td></tr>
+<tr><td>Demo recordings leaking</td><td>Stored only in the recording user's browser; reels are local downloads</td><td>16</td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ============================================================ 18 -->
+<section class="ch" id="c18">
+<h2><span class="n">18</span>Configuration and operations</h2>
+<h3>Running it</h3>
+<pre><code>npm run setup        # web dependencies + Python environment (uv)
+cp backend/.env.example backend/.env
+npm run dev          # Postgres + Redis in Docker, migrate, seed, API, worker, beat, web
+npm test             # backend test suite
+npm run stack        # the whole system in Docker → http://localhost:8080
+npm run seed:reset   # rebuild demo data and starter content
+npm run loadtest     # Locust UI</code></pre>
+<p>The Docker demo stack (<code>compose.yaml</code>) is for testers: one command, nothing to install but Docker.
+<code>docs/INSTALL.md</code> lists every component, port, dependency and setting for a real installation, with Docker,
+Kubernetes and plain-Linux instructions and a production checklist.</p>
+<p>Set <code>EXECUTION_MODE=inline</code> to run card queries inside the API process without a worker (the tests do
+this). On macOS the worker forces the <code>fork</code> process start method, which Celery's prefork pool expects;
+Linux already uses it.</p>
+
+<h3>Backend settings</h3>
+<div class="tbl"><table>
+<thead><tr><th>Setting</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>DATABASE_URL</code></td><td>…localhost:5433/spendboard</td><td>Metadata database</td></tr>
+<tr><td><code>DB_POOL_SIZE</code> / <code>DB_MAX_OVERFLOW</code></td><td>5 / 10</td><td>Per process; keep processes × total under Postgres <code>max_connections</code></td></tr>
+<tr><td><code>REDIS_URL</code></td><td>redis://localhost:6380/0</td><td>Cache, locks, queue</td></tr>
+<tr><td><code>JWKS_URL</code>, <code>JWT_ISSUER</code>, <code>JWT_AUDIENCE</code></td><td>local auth service</td><td>Identity provider</td></tr>
+<tr><td><code>SECRET_KEY</code></td><td>development value</td><td>Encrypts credentials — set a real one in every shared environment</td></tr>
+<tr><td><code>QUERY_MAX_ROWS</code> / <code>QUERY_TIMEOUT_S</code></td><td>1000 / 300</td><td>Row cap; server-wide ceiling on query time (each source sets its own timeout, 30 s by default)</td></tr>
+<tr><td><code>STORAGE_BACKEND</code></td><td>local</td><td><code>local</code> or <code>s3</code></td></tr>
+<tr><td><code>STORAGE_DIR</code> / <code>MAX_UPLOAD_MB</code></td><td>storage / 50</td><td>Local: shared files. S3: per-process cache and scratch</td></tr>
+<tr><td><code>S3_BUCKET</code>, <code>S3_PREFIX</code>, <code>S3_REGION</code>, <code>S3_ENDPOINT_URL</code></td><td>— / spendboard / — / —</td><td>S3 storage; the endpoint is for MinIO, R2 and similar</td></tr>
+<tr><td><code>STORAGE_CACHE_MAX_MB</code></td><td>5000</td><td>S3 only: per-process cache size</td></tr>
+<tr><td><code>ALLOW_PRIVATE_NETWORK_SOURCES</code></td><td>false</td><td>Let non-admins use private addresses (development)</td></tr>
+<tr><td><code>BIGQUERY_EMULATOR_HOST</code></td><td>unset</td><td>Development/tests only: send BigQuery sources to a local emulator</td></tr>
+<tr><td><code>REST_MAX_RECORDS</code> / <code>REST_MAX_RESPONSE_MB</code></td><td>100000 / 20</td><td>REST limits</td></tr>
+<tr><td><code>EXECUTION_MODE</code></td><td>celery</td><td><code>inline</code> runs queries in the API</td></tr>
+<tr><td><code>CELERY_BROKER_URL</code></td><td>= <code>REDIS_URL</code></td><td>Job-queue broker: Redis, RabbitMQ (<code>amqp://</code>) or SQS (<code>sqs://</code>)</td></tr>
+<tr><td><code>STALE_GRACE_S</code> / <code>RESULT_WAIT_S</code></td><td>21600 / 60</td><td>Stale serving window; the minimum time requests wait (longer for slower sources)</td></tr>
+<tr><td><code>BREAKER_FAILURES</code> / <code>BREAKER_OPEN_S</code></td><td>5 / 30</td><td>Circuit breaker</td></tr>
+<tr><td><code>STUCK_AFTER_S</code> / <code>QUEUE_WARN_DEPTH</code></td><td><code>QUERY_TIMEOUT_S</code> + 60 / 200</td><td>Health: when workers count as stuck; queue length that means "degraded"</td></tr>
+<tr><td><code>LLM_PROVIDER</code>, <code>LLM_MODEL</code>, <code>LLM_BASE_URL</code>, <code>LLM_API_KEY</code></td><td>offline</td><td>Assistant model</td></tr>
+<tr><td><code>AZURE_OPENAI_ENDPOINT</code>, <code>AZURE_OPENAI_API_VERSION</code></td><td>— / 2024-10-21</td><td>Azure OpenAI</td></tr>
+<tr><td><code>LLM_TEMPERATURE</code>, <code>LLM_TIMEOUT_S</code>, <code>LLM_MAX_TOOL_ROUNDS</code></td><td>0.1 / 60 / 6</td><td>Assistant behaviour</td></tr>
+<tr><td><code>ASSISTANT_REQUESTS_PER_MINUTE</code></td><td>20</td><td>Per-user rate limit</td></tr>
+<tr><td><code>VITE_DEMO_RECORDER</code> (web build)</td><td>on</td><td><code>false</code> leaves the demo recorder out of the web bundle</td></tr>
+</tbody></table></div>
+
+<h3>Health checks and alerts</h3>
+<p>Card queries run on workers, so "the API answers" proves little: workers can be alive yet stuck, as on 5 October,
+when every process check stayed green for hours. Health is measured by <strong>progress</strong>. Each worker records
+every task it finishes or discards (Celery signals), and <code>backend/app/ops/health.py</code> builds one snapshot from
+Redis: Postgres and Redis reachability, queue depth, jobs in flight, how long the oldest card job has been held, seconds
+since the last worker progress, and open breakers.</p>
+<div class="tbl"><table>
+<thead><tr><th>Status</th><th>When</th></tr></thead>
+<tbody>
+<tr><td>failing</td><td>Postgres or Redis unreachable; or no worker progress for <code>STUCK_AFTER_S</code> while card jobs wait in the queue, or while a card job has been held longer than that</td></tr>
+<tr><td>degraded</td><td>More than <code>QUEUE_WARN_DEPTH</code> jobs queued, or a data source paused by its breaker</td></tr>
+<tr><td>ok</td><td>Anything else, including an idle system</td></tr>
+</tbody></table></div>
+<p><code>STUCK_AFTER_S</code> is longer than any query may run, so a slow BigQuery job is never "stuck". Refresh jobs,
+which may legitimately run long, are never counted. A freshly restarted worker reports healthy at once: it records
+progress when it starts, even while the broker still lists jobs its stuck predecessor held (those are released after the
+visibility timeout, <code>QUERY_TIMEOUT_S</code> + 120 s, instead of Celery's default hour).</p>
+<div class="tbl"><table>
+<thead><tr><th>Check</th><th>Use it as</th><th>Fails when</th></tr></thead>
+<tbody>
+<tr><td><code>GET /readyz</code> on the API</td><td>API readiness probe</td><td>Postgres or Redis unreachable</td></tr>
+<tr><td><code>python -m app.ops.check</code> in the worker container</td><td>Worker liveness probe — the platform restarts stuck workers</td><td>Workers stuck (exit code 1)</td></tr>
+<tr><td><code>GET /metrics</code> on the API</td><td>Prometheus scrape</td><td>Never; it exposes the numbers</td></tr>
+<tr><td><code>GET /api/ops/health</code></td><td>Admin view with plain-language reasons</td><td>—</td></tr>
+</tbody></table></div>
+<div class="why"><b>Why stuck workers don't fail readiness</b><p>If they did, the platform would take every API replica out
+of service, turning "uncached cards fail" into "the whole app is down". Stuck workers trigger a worker restart and an
+alert instead. The check is cluster-wide on purpose: if card jobs wait and no worker anywhere progresses, any healthy
+worker would have taken them, so every worker is stuck.</p></div>
+<p>Metrics include <code>spendboard_status</code> (0 ok, 1 degraded, 2 failing), <code>spendboard_workers_stuck</code>,
+<code>spendboard_queue_depth</code>, <code>spendboard_jobs_in_flight</code>,
+<code>spendboard_seconds_since_worker_activity</code>, <code>spendboard_breakers_open</code>, cache lookups, computations
+and latency. Suggested alerts: status 2 for two minutes; status 1 for ten; a breaker open for ten. Probe endpoints sit
+outside <code>/api</code>, so the web server never exposes them. Verified by freezing the dev worker's eight processes:
+the check failed with both reasons while <code>/readyz</code> stayed ready, and after a forced restart it passed at
+once.</p>
+
+<h3>Seeding and upgrades</h3>
+<p><code>python -m app.seed</code> is idempotent. It loads the demo warehouse if empty, creates the demo data source, 12
+cards and the Enterprise Spend Overview dashboard as global version 1 (owned by a <code>system</code> user), syncs the
+directory users, and runs an upgrade step for databases seeded by earlier builds. That step works through normal
+versioning: the demo source gets a version with the full semantic model, global cards are re-pinned to it as new
+versions, and the demo dashboard gets a version with its filters and updated pins.</p>
+
+<h3>Tests</h3>
+<div class="tbl"><table>
+<thead><tr><th>File</th><th>Covers</th></tr></thead>
+<tbody>
+<tr><td><code>test_auth</code></td><td>Missing, forged and expired tokens; provisioning</td></tr>
+<tr><td><code>test_sql_guard</code></td><td>Read-only validation; bound filter parameters; applied/ignored reporting</td></tr>
+<tr><td><code>test_governance</code></td><td>Versions, privacy, global edit rules, pinning, archive, immutability trigger</td></tr>
+<tr><td><code>test_history_sharing</code>, <code>test_diff</code></td><td>History, diff, restore, view/edit shares, revoke, shared dashboards</td></tr>
+<tr><td><code>test_change_requests</code>, <code>test_merge</code></td><td>Fork, publish, bundles, updates, stale merges, conflicts, review rules, apply updates</td></tr>
+<tr><td><code>test_data_sources</code></td><td>CSV/Excel/JSON ingestion, file privacy, DuckDB lockdown, encrypted credentials, credential redirection, SSRF, REST pagination and auth</td></tr>
+<tr><td><code>test_bigquery</code></td><td>Exact BigQuery SQL (quoting, parameters, UNNEST, timestamp windows, grains, escaping), rejected BigQuery statements, and end to end against the emulator: onboarding, typed model, semantic and SQL cards with filters and YoY, options, admin-only server identity, key bound to its project</td></tr>
+<tr><td><code>test_semantic</code></td><td>Compiler, YoY, validation, measure safety, filter binding, cascading options, filter definitions, editable SQL</td></tr>
+<tr><td><code>test_scale</code></td><td>Caching, single-flight under 25 concurrent requests, stale refresh, errors and breaker, slots, render stream, lost-job recovery, DuckDB under concurrency, a hung source failing its job, viewers outwaiting <code>RESULT_WAIT_S</code> for a slow source</td></tr>
+<tr><td><code>test_storage</code></td><td>Local and S3 backends behave alike, keys can't escape the root, download-once caching, LRU eviction, uploads and REST extracts end to end on S3 (moto)</td></tr>
+<tr><td><code>test_health</code></td><td>Idle is healthy; waiting jobs without progress mean stuck; all workers hung with nothing queued; slow but progressing queries aren't stuck; a restarted worker isn't blamed; refresh jobs ignored; Redis down fails readiness; admin-only detail</td></tr>
+<tr><td><code>test_assistant</code></td><td>Offline answers, access and rate limit, tool loop against a scripted OpenAI-format server, tool scoping, forced final answer, model down</td></tr>
+</tbody></table></div>
+<p>140 tests run against a separate <code>spendboard_test</code> database (migrated from scratch each run) and Redis
+database 15, with an in-process identity provider so they mint real signed tokens. The BigQuery end-to-end tests need
+the emulator and are skipped without it.</p>
+</section>
+
+<!-- ============================================================ 19 -->
+<section class="ch" id="c19">
+<h2><span class="n">19</span>Design decisions</h2>
+<div class="tbl"><table>
+<thead><tr><th>Decision</th><th>Chosen</th><th>Because</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td>Versioning shape</td><td>One asset/version model for all kinds, immutable versions</td><td>History, restore, diff, sharing and publishing written once; safe pins and cache keys</td><td>Specs are JSON, so some integrity checks are in code rather than foreign keys (hence the dependency table)</td></tr>
+<tr><td>Dashboards and card changes</td><td>Pin versions; "Update all" to adopt</td><td>A card edit can never silently change a published dashboard</td><td>Owners must apply updates</td></tr>
+<tr><td>Editing global assets</td><td>Copy, then propose (PR model)</td><td>Review before shared content changes; parallel proposals</td><td>Merge logic and conflict UI</td></tr>
+<tr><td>Merge granularity</td><td>Per JSON path, keyed lists, SQL line hunks</td><td>Most concurrent edits touch different fields and should just merge</td><td>Two edits to the same field always need a human choice</td></tr>
+<tr><td>Metadata store</td><td>Postgres</td><td>Transactions for atomic approval; row locks for version numbers</td><td>—</td></tr>
+<tr><td>Query execution</td><td>Workers behind a Redis cache with single-flight</td><td>Protects sources and the API; one query per view</td><td>An extra service; first cold view waits for a worker</td></tr>
+<tr><td>Supporting several SQL engines</td><td>One dialect module; SQLGlot for quoting, escaping and validation</td><td>Adding BigQuery changed one module instead of every query builder</td><td>A new engine means a new column in that module and its tests</td></tr>
+<tr><td>BigQuery cost</td><td>Bytes-billed cap per query, per source</td><td>Fails before running instead of billing a surprise scan</td><td>Very large unfiltered cards need a higher cap or filters</td></tr>
+<tr><td>REST and files</td><td>DuckDB extracts</td><td>Fast analytical queries on data that has no query engine; APIs aren't hammered</td><td>Data is as fresh as the extract TTL</td></tr>
+<tr><td>Cards</td><td>Semantic queries, raw SQL still allowed</td><td>One vocabulary for builder, filters and assistant; dialect-portable</td><td>Raw-SQL cards bind filters through the table they read, less precisely</td></tr>
+<tr><td>Filters across sources</td><td>Bind by dimension name; report what didn't apply</td><td>Mixed-source dashboards stay honest</td><td>Sources must name shared dimensions consistently</td></tr>
+<tr><td>Assistant model API</td><td>OpenAI chat-completions format</td><td>Same code for Ollama (testing) and Azure OpenAI (production)</td><td>Tool-calling quality depends on the chosen model</td></tr>
+<tr><td>Assistant data access</td><td>Catalog + on-screen aggregates + bounded tools</td><td>Scales to huge sources; respects permissions; no raw data to the model</td><td>Some questions need several tool calls</td></tr>
+<tr><td>File storage</td><td>One interface, write-once keys; local disk or S3</td><td>S3 is configuration, not a rewrite; cached copies never go stale</td><td>DuckDB needs a local copy, so S3 setups keep a cache per process</td></tr>
+<tr><td>Job queue</td><td>Keep Celery, behind a one-file seam; broker configurable</td><td>Right shape for short interactive jobs; RabbitMQ or SQS without code changes</td><td>Kafka only makes sense as a separate event stream</td></tr>
+<tr><td>Timeouts</td><td>Everything derives from the per-source timeout</td><td>Long warehouse queries work; a dead source can't hold workers</td><td>A proxy in front must allow the longest timeout</td></tr>
+<tr><td>Health</td><td>Measure worker progress, not process liveness</td><td>Catches workers that are alive but stuck</td><td>The platform must use the worker check as a liveness probe</td></tr>
+<tr><td>Frontend state</td><td>TanStack Query for server data, a reducer for dashboard editing; no global store</td><td>Almost all state is server data; writes refresh the screen automatically</td><td>Query keys have to be designed with the invalidation rules in mind</td></tr>
+<tr><td>Demo capture</td><td>Browser Screen Capture API</td><td>Pixel-exact captures of anything on screen</td><td>One permission prompt per session; desktop browsers only</td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ============================================================ 20 -->
+<section class="ch" id="c20">
+<h2><span class="n">20</span>Open items and glossary</h2>
+<h3>Open items</h3>
+<ul>
+  <li><strong>Assistant with a real model.</strong> Built and tested against a scripted OpenAI-compatible server;
+  configure Ollama or Azure to try it end to end.</li>
+  <li><strong>Demo recorder with a real screen.</strong> Verified end to end with a simulated screen source; a first
+  capture in Chrome or Edge is still to do.</li>
+  <li><strong>Platform sign-in.</strong> In production the hosting platform signs users in; its role claim must be
+  matched to <code>admin</code> (chapter 3).</li>
+  <li><strong>CI and frontend tests.</strong> Backend tests run locally; there is no CI workflow and no frontend test
+  suite yet.</li>
+  <li><strong>Team sharing.</strong> Only individual users today; the schema is ready for teams.</li>
+  <li><strong>DNS rebinding.</strong> The private-address check runs at save and test, not on every connection.</li>
+  <li><strong>Cold-query throughput.</strong> One job per prefork worker process; more processes or an asyncio-native
+  worker would raise the ~280 cards/s cold ceiling measured on a laptop.</li>
+  <li><strong>Pre-aggregations.</strong> Designed (rollups at the grain of a dashboard's filters) but not built; this is
+  the answer for very large, slow sources.</li>
+  <li><strong>Assistant and card overrides.</strong> The assistant sees cards with the dashboard-level filters, not
+  per-card overrides.</li>
+  <li><strong>Demo dates.</strong> Period presets end on 11 June 2026 to match the sample data.</li>
+</ul>
+<h3>Glossary</h3>
+<dl class="gl">
+  <dt>Asset</dt><dd>A card, dashboard or data source as a stable identity, independent of its versions.</dd>
+  <dt>Version</dt><dd>An immutable snapshot of an asset's name, description and spec.</dd>
+  <dt>Head</dt><dd>An asset's current version.</dd>
+  <dt>Pin</dt><dd>A reference to an exact version (a dashboard placement to a card version, a card to a source version).</dd>
+  <dt>Scope</dt><dd>Private (an owner's workspace) or global (the shared library).</dd>
+  <dt>Copy / fork</dt><dd>A private copy of a global asset that remembers which global version it came from.</dd>
+  <dt>Change request</dt><dd>A proposal to publish new assets or update global ones, reviewed by an admin.</dd>
+  <dt>Bundle</dt><dd>The asset plus its private dependencies, submitted and approved together.</dd>
+  <dt>Base</dt><dd>The global version a copy was made from; one of the three inputs to a merge.</dd>
+  <dt>Semantic model</dt><dd>A source's business vocabulary: datasets, dimensions, measures, time dimension.</dd>
+  <dt>Semantic query</dt><dd>A card query in business terms, compiled to SQL per source dialect.</dd>
+  <dt>Applied / ignored</dt><dd>Which requested filters a card's source could and couldn't bind.</dd>
+  <dt>Extract</dt><dd>A DuckDB copy of REST or file data that cards query.</dd>
+  <dt>Single-flight</dt><dd>Making concurrent requests for the same result share one computation.</dd>
+  <dt>Stale-while-revalidate</dt><dd>Serving an expired cached result immediately while refreshing it in the background.</dd>
+  <dt>Source slot</dt><dd>One of a source endpoint's limited concurrent query permits, shared across all workers.</dd>
+  <dt>Circuit breaker</dt><dd>Pausing a failing source briefly so it can recover and workers aren't tied up.</dd>
+  <dt>Storage key</dt><dd>A write-once name for a stored file, such as <code>files/12.duckdb</code>, resolved to local disk or S3.</dd>
+  <dt>Job deadline</dt><dd>The hard limit on one card run: the source's timeout plus 10 seconds.</dd>
+  <dt>Worker progress</dt><dd>The time a worker last finished or discarded a task; the basis of the stuck-worker check.</dd>
+  <dt>Reel</dt><dd>The self-contained HTML walkthrough the demo recorder exports.</dd>
+</dl>
+</section>
+</article>
+</main>
+</div>
+</body>
+</html>

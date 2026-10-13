@@ -27,7 +27,7 @@ export const queryClient = new QueryClient({
 
 onApiWrite(() => queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'data' }));
 
-type ListScope = Scope | 'shared' | undefined;
+type ListScope = Scope | 'shared' | 'deleted' | undefined;
 
 export const keys = {
   cards: (scope?: ListScope) => ['assets', 'cards', 'list', scope ?? 'all'] as const,
@@ -42,7 +42,7 @@ export const keys = {
   shares: (kind: AssetKind, id: number) => ['assets', kind, 'shares', id] as const,
   rebase: (kind: AssetKind, id: number) => ['assets', kind, 'rebase', id] as const,
   filterable: (dashboardId: number) => ['assets', 'dashboards', 'filterable', dashboardId] as const,
-  requests: (status: RequestStatus | 'all') => ['requests', 'list', status] as const,
+  requests: (status: RequestStatus | 'open' | 'all') => ['requests', 'list', status] as const,
   request: (id: number | string) => ['requests', 'detail', String(id)] as const,
   requestSummary: () => ['requests', 'summary'] as const,
   users: (q: string) => ['users', q] as const,
@@ -69,7 +69,11 @@ export const useDataSources = (scope?: ListScope) =>
   useQuery({ queryKey: keys.dataSources(scope), queryFn: () => api.dataSources(scope) });
 export const useDataSource = (id?: number | string, o?: DetailOptions) =>
   useQuery({ queryKey: keys.dataSource(id ?? ''), queryFn: () => api.dataSource(id!), enabled: id !== undefined, ...detailOptions(o) });
-export const useDatasets = () => useQuery({ queryKey: keys.datasets(), queryFn: api.datasets });
+export const useDatasets = () => useQuery({
+  queryKey: keys.datasets(), queryFn: api.datasets,
+  // A slow source comes back as "loading" rather than holding up the list — ask again until it's in
+  refetchInterval: (q) => (q.state.data?.some((d) => d.loading) ? 2000 : false),
+});
 
 export const useVersions = (kind: AssetKind, id: number) =>
   useQuery({ queryKey: keys.versions(kind, id), queryFn: () => api.versions(kind, id) });
@@ -82,7 +86,7 @@ export const useRebasePreview = (kind: AssetKind, id: number) =>
 export const useFilterable = (dashboardId: number) =>
   useQuery({ queryKey: keys.filterable(dashboardId), queryFn: () => api.dashboardFilterable(dashboardId) });
 
-export const useChangeRequests = (status: RequestStatus | 'all') =>
+export const useChangeRequests = (status: RequestStatus | 'open' | 'all') =>
   useQuery({ queryKey: keys.requests(status), queryFn: () => api.changeRequests(status) });
 export const useChangeRequest = (id?: number | string) =>
   useQuery({ queryKey: keys.request(id ?? ''), queryFn: () => api.changeRequest(id!), enabled: id !== undefined });

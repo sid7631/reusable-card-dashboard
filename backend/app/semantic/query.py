@@ -13,7 +13,7 @@ from sqlglot.errors import ParseError
 
 from app.governance.specs import DataSourceSpec, SemanticDataset
 from app.semantic.dialects import TEMPORAL_TYPES, grain_sql, literal, quote, quote_table
-from app.semantic.filters import Filters, FilterError, bind
+from app.semantic.filters import Filters, FilterError, bind, normalise_values
 
 Grain = Literal["day", "week", "month", "quarter", "year"]
 AGGS = ("SUM", "AVG", "COUNT", "MIN", "MAX", "COUNT_DISTINCT")
@@ -132,7 +132,8 @@ def compile_query(source: DataSourceSpec, q: SemanticQuery, filters: Filters, *,
         for f in q.filters:
             if f.dimension not in dims:
                 raise CompileError(f"Unknown dimension “{f.dimension}”.")
-            static.append(f"AND {quote(dims[f.dimension].column, dialect)} IN ({', '.join(literal(v, dialect) for v in f.values)})")
+            values = normalise_values(dims[f.dimension].type, f.values)
+            static.append(f"AND {quote(dims[f.dimension].column, dialect)} IN ({', '.join(literal(v, dialect) for v in values)})")
         where = " ".join([*static, "{{filters}}"])
         bound = None
     else:

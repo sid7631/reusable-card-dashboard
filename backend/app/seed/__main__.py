@@ -144,16 +144,16 @@ CARDS = [
      "SELECT industry AS label, sub_industry AS sublabel, SUM(amount) AS value\nFROM transactions\n"
      "WHERE 1=1 {{filters}}\nGROUP BY label, sublabel\nORDER BY value DESC\nLIMIT 8",
      {**SUM_AMOUNT, "dimension": "industry", "dimension2": "sub_industry", "limit": 8,
-      "controls": {"segment": True, "period": True}}),
+      "controls": {"filters": ["segment", "sub_segment"], "period": True}}),
     ("Product Spend", "Charge volume by card product, with YoY deltas.", "barlist", "builder", grouped("product"),
-     {**SUM_AMOUNT, "dimension": "product", "controls": {"segment": True}}),
+     {**SUM_AMOUNT, "dimension": "product", "controls": {"filters": ["segment", "sub_segment"]}}),
     ("Spend by Vintage", "Charge volume by card-member acquisition cohort.", "barlist", "builder",
-     grouped("'Vintage ' || vintage"), {**SUM_AMOUNT, "dimension": "vintage", "controls": {"segment": True}}),
+     grouped("'Vintage ' || vintage"), {**SUM_AMOUNT, "dimension": "vintage", "controls": {"filters": ["segment", "sub_segment"]}}),
     ("Merchant Geography", "Charge volume by merchant country, with YoY deltas.", "barlist", "builder",
-     grouped("country", 7), {**SUM_AMOUNT, "dimension": "country", "limit": 7, "controls": {"segment": True}}),
+     grouped("country", 7), {**SUM_AMOUNT, "dimension": "country", "limit": 7, "controls": {"filters": ["segment", "sub_segment"]}}),
     ("Top Merchants by Charge Volume", "Top five merchants ranked by total spend.", "barlist", "builder",
      grouped("merchant", 5),
-     {**SUM_AMOUNT, "dimension": "merchant", "limit": 5, "rank": True, "controls": {"segment": True}}),
+     {**SUM_AMOUNT, "dimension": "merchant", "limit": 5, "rank": True, "controls": {"filters": ["segment", "sub_segment"]}}),
     ("Spend Share by Segment", "How charge volume splits across business segments.", "donut", "builder",
      grouped("segment"), {**SUM_AMOUNT, "dimension": "segment"}),
     ("Monthly Spend Trend by Product", "Monthly charge volume for the three flagship consumer products.", "line", "sql",
@@ -167,7 +167,7 @@ CARDS = [
      "SELECT txn_date AS label, SUM(amount) AS value\nFROM transactions\n"
      "WHERE txn_date >= DATE '2026-06-11' - INTERVAL '90 days' {{filters}}\nGROUP BY label\nORDER BY label",
      {**SUM_AMOUNT, "dimension": "txn_date", "timeGrain": "day",
-      "controls": {"segment": True, "period": True, "periodOptions": ["month", "quarter", "ytd"]}}),
+      "controls": {"filters": ["segment", "sub_segment"], "period": True, "periodOptions": ["month", "quarter", "ytd"]}}),
 ]
 
 LAYOUT = [
@@ -213,10 +213,11 @@ DEMO_SOURCE = {
 async def seed_assets(reset: bool) -> None:
     async with SessionLocal() as session:
         if reset:
-            # Versions are immutable by design; a full reset truncates instead of deleting row by row
+            # Versions are immutable by design; a full reset truncates instead of deleting row by row.
+            # Uploads go too: every data source that read them is gone (the stored files are left behind)
             await session.execute(text(
                 "TRUNCATE audit_events, change_request_items, change_requests, asset_shares, "
-                "asset_dependencies, asset_versions, assets RESTART IDENTITY CASCADE"))
+                "asset_dependencies, asset_versions, assets, file_objects RESTART IDENTITY CASCADE"))
             await session.execute(delete(User).where(User.sub == "system"))
             await session.commit()
         if await session.scalar(select(Asset.id).limit(1)) is not None:
@@ -253,6 +254,7 @@ async def seed_assets(reset: bool) -> None:
 # first sign-in. Mirrors the demo accounts in apps/web/server/index.mjs.
 DIRECTORY = [
     ("u-avery", "Avery Admin", "avery@spendboard.local", "admin"),
+    ("u-morgan", "Morgan Admin", "morgan@spendboard.local", "admin"),
     ("u-riley", "Riley Analyst", "riley@spendboard.local", "user"),
     ("u-jordan", "Jordan Analyst", "jordan@spendboard.local", "user"),
 ]
@@ -295,22 +297,23 @@ async def upgrade_demo() -> None:
 
         cards = await session.scalars(select(Asset).where(Asset.kind == "card", Asset.scope == "global",
                                                           Asset.archived_at.is_(None)))
+        migrated: dict[int, int] = {}  # card asset → the version this upgrade created
         for card in cards:
             v = await session.get(AssetVersion, card.head_version_id)
             ref = v.spec["data_source"]
             if ref["asset_id"] == source.id and ref["version_id"] != source.head_version_id:
-                await save_version(session, system, card, name=v.name, description=v.description,
-                                   spec={**v.spec, "data_source": {"asset_id": source.id, "version_id": source.head_version_id}},
-                                   change_note="Use Demo Warehouse semantic model")
+                new = await save_version(session, system, card, name=v.name, description=v.description,
+                                         spec={**v.spec, "data_source": {"asset_id": source.id, "version_id": source.head_version_id}},
+                                         change_note="Use Demo Warehouse semantic model")
+                migrated[card.id] = new.id
                 changed = True
 
         dash = await session.scalar(select(Asset).where(Asset.kind == "dashboard", Asset.scope == "global",
                                                         Asset.name == "Enterprise Spend Overview"))
         if dash is not None:
             dv = await session.get(AssetVersion, dash.head_version_id)
-            heads = {a.id: a.head_version_id for a in await session.scalars(
-                select(Asset).where(Asset.id.in_([i["card"]["asset_id"] for i in dv.spec["items"]])))}
-            items = [{**i, "card": {**i["card"], "version_id": heads.get(i["card"]["asset_id"], i["card"]["version_id"])}}
+            # Only cards migrated above move; other card updates stay pending for an admin to apply
+            items = [{**i, "card": {**i["card"], "version_id": migrated.get(i["card"]["asset_id"], i["card"]["version_id"])}}
                      for i in dv.spec["items"]]
             if not dv.spec.get("filters") or items != dv.spec["items"]:
                 await save_version(session, system, dash, name=dv.name, description=dv.description,
@@ -369,7 +372,14 @@ async def seed_bigquery_demo() -> None:
     host = get_settings().bigquery_emulator_host
     if not host:
         return
-    loaded = await asyncio.to_thread(_load_bigquery_emulator, host)
+    try:
+        loaded = await asyncio.to_thread(_load_bigquery_emulator, host)
+    except Exception as exc:  # noqa: BLE001 — not running, still starting, or an emulator error mid-load
+        # BigQuery is an optional extra of the demo: skip it rather than fail the whole seed
+        reason = str(exc).splitlines()[0][:200] if str(exc) else exc.__class__.__name__
+        print(f"BigQuery demo: skipped — {reason}. Restart it (`docker restart spendboard-bigquery-1`, or "
+              "`npm run infra:bigquery`) and run `npm run seed` again.")
+        return
     print(f"BigQuery emulator: loaded {loaded:,} transactions." if loaded else "BigQuery emulator: already loaded.")
 
     async with SessionLocal() as session:
@@ -415,11 +425,15 @@ async def seed_bigquery_demo() -> None:
 
 
 async def main(reset: bool) -> None:
+    from app.seed.demo_story import seed_demo_story, seed_more_sources
+
     await seed_warehouse(reset)
     await seed_assets(reset)
     await sync_directory()
     await upgrade_demo()
     await seed_bigquery_demo()
+    await seed_more_sources()
+    await seed_demo_story()
     await engine.dispose()
 
 

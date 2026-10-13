@@ -31,6 +31,8 @@ x-backend-env: &backend-env
   ALLOW_PRIVATE_NETWORK_SOURCES: "true"
   # BigQuery sources run against the bundled emulator (pre-loaded with the demo data)
   BIGQUERY_EMULATOR_HOST: http://bigquery:9050
+  # The seeded REST data source calls the API's own demo endpoint
+  DEMO_API_BASE_URL: http://api:8010
   # Dashboard assistant: offline by default. For Ollama on your machine:
   #   LLM_PROVIDER=openai LLM_BASE_URL=http://host.docker.internal:11434/v1 LLM_MODEL=qwen2.5:7b docker compose up
   LLM_PROVIDER: ${LLM_PROVIDER:-offline}

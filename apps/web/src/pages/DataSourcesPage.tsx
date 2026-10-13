@@ -3,14 +3,17 @@ import { Link } from 'react-router-dom';
 import { useDataSources } from '../lib/queries';
 import { timeAgo } from '../lib/format';
 import AssetBadges from '../components/AssetBadges';
+import DeleteDialog, { DeletedList } from '../components/DeleteDialog';
+import type { DataSource } from '../lib/types';
 
-type Tab = 'all' | 'global' | 'private' | 'shared';
-const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global'], ['private', 'My sources'], ['shared', 'Shared with me']];
+type Tab = 'all' | 'global' | 'private' | 'shared' | 'deleted';
+const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global'], ['private', 'My sources'], ['shared', 'Shared with me'], ['deleted', 'Deleted']];
 export const SOURCE_TYPE_LABEL = { postgres: 'Postgres', rest: 'REST API', file: 'File', bigquery: 'BigQuery' } as const;
 
 export default function DataSourcesPage() {
   const [tab, setTab] = useState<Tab>('all');
   const { data: sources } = useDataSources(tab === 'all' ? undefined : tab);
+  const [deleting, setDeleting] = useState<DataSource | null>(null);
 
   return (
     <div className="px-10 py-8">
@@ -36,6 +39,7 @@ export default function DataSourcesPage() {
         ))}
       </div>
 
+      {tab === 'deleted' ? <DeletedList kind="data-sources" items={sources} /> : (
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
         {sources?.map((s) => (
           <Link key={s.id} to={`/data-sources/${s.id}`}
@@ -54,6 +58,12 @@ export default function DataSourcesPage() {
               </span>
               {s.pending_request_id && <span className="rounded-md bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">In review</span>}
               <span className="ml-auto text-ink-faint">{s.owner_name ?? 'Global'} · {timeAgo(s.updated_at)}</span>
+              {(s.access === 'owner' || s.access === 'admin') && (
+                <button onClick={(e) => { e.preventDefault(); setDeleting(s); }} aria-label="Delete data source"
+                  className="rounded-lg p-1 text-ink-faint opacity-0 transition hover:bg-negative/10 hover:text-negative group-hover:opacity-100">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M3 5h10M6 5V3h4v2m-5 0v8m4-8v8M4 5l1 9h6l1-9" /></svg>
+                </button>
+              )}
             </div>
           </Link>
         ))}
@@ -63,6 +73,8 @@ export default function DataSourcesPage() {
           </div>
         )}
       </div>
+      )}
+      {deleting && <DeleteDialog kind="data-sources" asset={deleting} onClose={() => setDeleting(null)} />}
     </div>
   );
 }

@@ -37,6 +37,19 @@ const DEFAULT_SIZE: Partial<Record<ChartType, { w: number; h: number }>> = {
   kpi: { w: 3, h: 2 },
 };
 
+const COLS = 12;
+
+/** Top-left-most place on the 12-column grid where a w×h card fits without overlapping anything. */
+export function firstFreeSpot(items: { x: number; y: number; w: number; h: number }[], { w, h }: { w: number; h: number }) {
+  const bottom = items.reduce((m, it) => Math.max(m, it.y + it.h), 0);
+  const free = (x: number, y: number) =>
+    !items.some((it) => x < it.x + it.w && it.x < x + w && y < it.y + it.h && it.y < y + h);
+  for (let y = 0; y <= bottom; y++) {
+    for (let x = 0; x + w <= COLS; x++) if (free(x, y)) return { x, y };
+  }
+  return { x: 0, y: bottom };
+}
+
 function withFilterDefaults(state: DashboardEditorState, d: DashboardDetail): DashboardEditorState {
   const key = JSON.stringify(d.filters);
   if (key === state.filtersKey) return state;
@@ -68,8 +81,7 @@ export function dashboardEditor(state: DashboardEditorState, action: DashboardEd
     }
     case 'addCard': {
       const size = DEFAULT_SIZE[action.card.chart_type] ?? { w: 4, h: 4 };
-      const bottom = state.items.reduce((m, it) => Math.max(m, it.y + it.h), 0);
-      return { ...state, items: [...state.items, { ...action.card, x: 0, y: bottom, ...size }], dirty: true };
+      return { ...state, items: [...state.items, { ...action.card, ...firstFreeSpot(state.items, size), ...size }], dirty: true };
     }
     case 'removeCard':
       return { ...state, items: state.items.filter((it) => it.id !== action.cardId), dirty: true };

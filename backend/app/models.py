@@ -65,11 +65,18 @@ class AssetVersion(Base):
     """Immutable — a database trigger rejects UPDATE and DELETE."""
 
     __tablename__ = "asset_versions"
-    __table_args__ = (UniqueConstraint("asset_id", "version_no", name="uq_asset_versions_no"),)
+    __table_args__ = (
+        UniqueConstraint("asset_id", "version_no", name="uq_asset_versions_no"),
+        UniqueConstraint("asset_id", "major", "minor", name="uq_asset_versions_label"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
+    # Gapless sequence per asset — history URLs and ordering
     version_no: Mapped[int] = mapped_column(Integer)
+    # The version people see (see `label`): global N; private copy of global vN → N.1, N.2…; never published → 0.x
+    major: Mapped[int] = mapped_column(Integer, default=0)
+    minor: Mapped[int] = mapped_column(Integer, default=0)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     spec: Mapped[dict[str, Any]] = mapped_column(JSONB)
@@ -77,6 +84,14 @@ class AssetVersion(Base):
     change_note: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def label(self) -> str:
+        return version_label(self.major, self.minor)
+
+
+def version_label(major: int, minor: int) -> str:
+    return str(major) if minor == 0 else f"{major}.{minor}"
 
 
 class AssetDependency(Base):
@@ -104,14 +119,20 @@ class AssetShare(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+REQUEST_STATUSES = ("pending", "changes_requested", "approved", "rejected", "withdrawn")
+# Still open: in review, or sent back to the requester for changes
+OPEN_STATUSES = ("pending", "changes_requested")
+COMMENT_KINDS = ("comment", "changes_requested", "resubmitted", "approved", "rejected", "withdrawn")
+
+
 class ChangeRequest(Base):
     __tablename__ = "change_requests"
     __table_args__ = (
-        CheckConstraint(_in("status", ("pending", "approved", "rejected", "withdrawn")), name="ck_change_requests_status"),
+        CheckConstraint(_in("status", REQUEST_STATUSES), name="ck_change_requests_status"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     requested_by: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -139,6 +160,30 @@ class ChangeRequestItem(Base):
     target_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     base_version_id: Mapped[int | None] = mapped_column(ForeignKey("asset_versions.id"))
     result_version_id: Mapped[int | None] = mapped_column(ForeignKey("asset_versions.id"))
+
+
+class ChangeRequestComment(Base):
+    """The conversation on a request: comments plus the review steps, as one timeline."""
+
+    __tablename__ = "change_request_comments"
+    __table_args__ = (CheckConstraint(_in("kind", COMMENT_KINDS), name="ck_change_request_comments_kind"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("change_requests.id"), index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(String(24), default="comment")
+    body: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChangeRequestRead(Base):
+    """When a person last opened a request — comments by others after it are unread."""
+
+    __tablename__ = "change_request_reads"
+
+    request_id: Mapped[int] = mapped_column(ForeignKey("change_requests.id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    last_read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Secret(Base):

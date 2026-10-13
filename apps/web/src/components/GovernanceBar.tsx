@@ -49,17 +49,35 @@ export default function GovernanceBar({ kind, asset, onChanged }: { kind: AssetK
         </button>
       )}
 
-      {fork && (
+      {fork && !fork.deleted && (
         <Link to={EDIT_PATH[kind](fork.asset_id)} title="This is your private copy of a global asset"
           className={`${chip} bg-canvas text-ink-soft hover:text-accent`}>
-          Copy of global “{fork.name}” · v{fork.base_version_no}
+          Copy of global “{fork.name}” · v{fork.base_version}
         </Link>
+      )}
+      {fork?.deleted && (
+        <span className={`${chip} bg-canvas text-ink-soft`}
+          title="An admin deleted the global original. Your copy is kept; proposing it would publish it as a new global asset.">
+          Copy of “{fork.name}” · the global original was deleted
+        </span>
       )}
       {fork?.stale && asset.can_edit && (
         <button onClick={() => setDialog('rebase')}
           className={`${action} border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100`}>
-          Global is now v{fork.global_version_no} — update from global
+          Global is now v{fork.global_version} — update from global
         </button>
+      )}
+
+      {asset.scope === 'global' && asset.open_requests.length > 0 && (
+        <span className={`${chip} bg-amber-50 text-amber-800`}
+          title="Open change requests that would change this. Editing or approving one may create conflicts for the others.">
+          {asset.open_requests.length === 1 ? '1 open request is' : `${asset.open_requests.length} open requests are`} changing this:
+          {asset.open_requests.map((r) => (
+            asset.can_edit
+              ? <Link key={r.id} to={`/requests/${r.id}`} className="underline hover:text-amber-950">#{r.id} ({r.requested_by_name})</Link>
+              : <span key={r.id}>#{r.id} ({r.requested_by_name})</span>
+          ))}
+        </span>
       )}
 
       {asset.pending_request_id ? (
@@ -68,7 +86,7 @@ export default function GovernanceBar({ kind, asset, onChanged }: { kind: AssetK
         </Link>
       ) : asset.scope === 'private' && owner && (
         <button onClick={() => setDialog('submit')} className={`${action} border-accent bg-accent text-white hover:bg-accent-deep`}>
-          {fork ? 'Propose changes' : 'Request publish'}
+          {fork && !fork.deleted ? 'Propose changes' : 'Request publish'}
         </button>
       )}
 
@@ -84,7 +102,8 @@ export default function GovernanceBar({ kind, asset, onChanged }: { kind: AssetK
 
 function SubmitDialog({ kind, asset, onClose }: { kind: AssetKind; asset: AssetMeta; onClose: () => void }) {
   const navigate = useNavigate();
-  const [title, setTitle] = useState(asset.fork ? `Update “${asset.fork.name}”` : `Publish “${asset.name}”`);
+  const updating = asset.fork && !asset.fork.deleted;
+  const [title, setTitle] = useState(updating ? `Update “${asset.fork!.name}”` : `Publish “${asset.name}”`);
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
@@ -104,9 +123,9 @@ function SubmitDialog({ kind, asset, onClose }: { kind: AssetKind; asset: AssetM
 
   const field = 'w-full rounded-lg border border-line px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20';
   return (
-    <Modal title={asset.fork ? 'Propose changes to global' : 'Request publish to global'}
-      subtitle={asset.fork
-        ? `An admin reviews your v${asset.version_no} against global “${asset.fork.name}”.`
+    <Modal title={updating ? 'Propose changes to global' : 'Request publish to global'}
+      subtitle={updating && asset.fork
+        ? `An admin reviews your v${asset.version} against global “${asset.fork.name}”.`
         : 'An admin reviews it before it appears in the global library. Private cards it uses are included automatically.'}
       onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">

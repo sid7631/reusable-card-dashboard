@@ -19,7 +19,7 @@ async def test_history_diff_and_restore(user, seeded):
     assert "spec.query.sql" in paths
 
     restored = (await user.post(f"{base}/restore/1")).json()
-    assert restored["version_no"] == 3 and restored["change_note"] == "Restored v1"
+    assert restored["version_no"] == 3 and restored["change_note"] == "Restored v0.1" and restored["version"] == "0.3"
     head = (await user.get(base)).json()
     assert head["name"] == "My card" and head["version_no"] == 3
     v1 = (await user.get(f"{base}/versions/1")).json()
@@ -94,3 +94,24 @@ async def test_user_directory_excludes_self(user, other_user):
     other = await user_id(other_user)
     ids = [u["id"] for u in (await user.get("/api/users", params={"q": other_user.sub})).json()]
     assert ids == [other] and me not in ids
+
+
+async def test_editor_can_save_a_shared_dashboard_with_the_owners_private_cards(user, other_user, seeded):
+    """An editor may not see the owner's private cards, but saving must not require it — only cards
+    they add need their own access."""
+    from tests.test_governance import card_body
+    private = (await user.post("/api/cards", card_body(seeded["source_id"], name="Owner only"))).json()
+    dash = (await user.post("/api/dashboards", {"name": "Shared to edit"})).json()
+    await user.put(f"/api/dashboards/{dash['id']}/items", {"items": [{"card_id": private["id"]}]})
+    await user.put(f"/api/dashboards/{dash['id']}/shares/{(await other_user.get('/api/me')).json()['id']}",
+                   {"permission": "edit"})
+
+    items = (await other_user.get(f"/api/dashboards/{dash['id']}")).json()["items"]
+    global_card = seeded["cards"]["Total AXP Spend"]["id"]
+    saved = await other_user.put(f"/api/dashboards/{dash['id']}/items", {"items": [
+        {"item_id": items[0]["item_id"], "card_id": private["id"], "w": 6}, {"card_id": global_card}]})
+    assert saved.status_code == 200, saved.text
+    # Adding someone else's private card they can't see is still refused
+    theirs = (await user.post("/api/cards", card_body(seeded["source_id"], name="Also private"))).json()
+    refused = await other_user.put(f"/api/dashboards/{dash['id']}/items", {"items": [{"card_id": theirs["id"]}]})
+    assert refused.status_code == 404

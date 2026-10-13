@@ -1,6 +1,6 @@
-import { useCallback, useContext, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { createRenderBatcher, RenderContext } from '../lib/render';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout';
 import { api } from '../lib/api';
 import { keys, queryClient, useCards, useDashboard } from '../lib/queries';
@@ -19,10 +19,12 @@ import AssetBadges from '../components/AssetBadges';
 import VersionHistory from '../components/VersionHistory';
 import ShareDialog from '../components/ShareDialog';
 import GovernanceBar from '../components/GovernanceBar';
+import CardUpdateDialog from '../components/CardUpdateDialog';
+import NotFound from '../components/NotFound';
 
 const Grid = WidthProvider(RGL);
 
-function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onRemove }: {
+function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onRemove, onShowUpdate }: {
   card: DashboardItem;
   dashboardId: number;
   defs: DashboardFilterDef[];
@@ -31,6 +33,8 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
   period: Period | null;
   editMode: boolean;
   onRemove: () => void;
+  /** Open the "what changed / update this card" dialog. */
+  onShowUpdate: () => void;
 }) {
   const [data, setData] = useState<CardData>({ rows: [], meta: {} });
   const [loading, setLoading] = useState(true);
@@ -48,6 +52,9 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
   const periodLocked = defs.some((d) => d.kind === 'period' && d.locked);
   const controls_ = card.config.controls;
   const controlDims = cardControlDims(card).filter((d) => card.filterable?.dimensions.includes(d) ?? true);
+  // A saved placement renders the card version the dashboard pins. A card just added in edit mode has
+  // no placement yet, so it renders the card's own current version (as anyone with the card can)
+  const source = card.item_id ? { versionId: card.card_version_id, dashboardId } : { versionId: card.version_id };
 
   const effDims = { ...applied.dims };
   for (const [dim, values] of Object.entries(dimOverrides)) {
@@ -70,7 +77,7 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
     // edit mode (not saved yet) load on their own
     const request = batcher && card.item_id
       ? batcher.load(card.item_id, filters)
-      : api.cardData(card.id, filters, { versionId: card.card_version_id, dashboardId });
+      : api.cardData(card.id, filters, card.item_id ? { versionId: card.card_version_id, dashboardId } : { versionId: card.version_id });
     let timer: ReturnType<typeof setTimeout> | undefined;
     request
       .then((d) => {
@@ -82,7 +89,7 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
       .catch((e) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; clearTimeout(timer); };
-  }, [card.id, card.item_id, card.card_version_id, dashboardId, effectiveKey, batcher, recheck]);
+  }, [card.id, card.item_id, card.card_version_id, card.version_id, dashboardId, effectiveKey, batcher, recheck]);
 
   const setOverride = (dim: string, values: string[]) => setDimOverrides((o) => {
     const next = { ...o, [dim]: values };
@@ -102,8 +109,8 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
             <FilterSelect key={dim} compact label={def?.label || dimensionLabel(dim)} scheme={card.config.scheme}
               multi={def ? def.kind === 'multi' : i > 0} value={effDims[dim] ?? []} onChange={(v) => setOverride(dim, v)}
               allowed={dim === 'segment' ? controls_?.segmentOptions?.filter((o) => o !== 'ALL') : undefined}
-              load={() => api.cardFilterOptions(card.id, dim, narrowing, { versionId: card.card_version_id, dashboardId }).then((r) => r.values)}
-              optionsKey={['card', card.id, card.card_version_id, dashboardId, dim, narrowing]}
+              load={() => api.cardFilterOptions(card.id, dim, narrowing, source).then((r) => r.values)}
+              optionsKey={['card', card.id, source.versionId, source.dashboardId, dim, narrowing]}
               disabled={lockedDims.has(dim)} title={lockedDims.has(dim) ? 'Locked by the dashboard' : undefined} />
           );
         })}
@@ -116,7 +123,15 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
 
   const ignored = (data.meta.ignored ?? []).map((d) => (d === 'period' ? 'period' : defs.find((f) => f.dimension === d)?.label || dimensionLabel(d)));
   const notices = [
-    ...(card.update_available ? [{ label: 'Update', title: 'A newer version of this card exists' }] : []),
+    ...(card.deleted ? [{
+      label: 'Deleted',
+      title: 'This card was deleted from the library. It still works here, but gets no updates and can’t be added to other dashboards. Remove or replace it when convenient.',
+    }] : []),
+    ...(card.update_available ? [{
+      label: 'Update',
+      title: `This dashboard shows v${card.version} — see what changed in v${card.latest_version ?? 'the latest version'}`,
+      onClick: onShowUpdate,
+    }] : []),
     ...(ignored.length ? [{ label: 'Partly filtered', title: `Not filtered by ${ignored.join(', ')} — the card's source doesn't have ${ignored.length === 1 ? 'that field' : 'those fields'}` }] : []),
   ];
 
@@ -130,26 +145,41 @@ function DashboardCard({ card, dashboardId, defs, applied, period, editMode, onR
     <CardFrame card={card} rows={data.rows} controls={controls} notices={notices} context={context} editMode={editMode}
       asOf={data.as_of} stale={data.stale}
       onRemove={onRemove} loading={loading} error={error}>
-      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} scheme={card.config.scheme} />
+      <ChartRenderer chartType={card.chart_type} data={data} compact={card.w <= 3} xKey={card.config.xKey} yKeys={card.config.yKeys} rank={card.config.rank} scheme={card.config.scheme} format={card.config.format} />
     </CardFrame>
   );
 }
 
 export default function DashboardPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const dashboardQuery = useDashboard(id);
   const [state, dispatch] = useReducer(dashboardEditor, initialDashboardEditor);
   const { dashboard, items, dirty, editMode, filterValues, period } = state;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string>();
   const [dialog, setDialog] = useState<'history' | 'share' | null>(null);
+  // Placement whose "update available" dialog is open
+  const [updating, setUpdating] = useState<string | null>(null);
   const library = useCards(undefined, drawerOpen).data ?? [];
   const batcher = useMemo(() => (id ? createRenderBatcher(Number(id)) : null), [id]);
 
   useEffect(() => { if (dashboardQuery.data) dispatch({ type: 'loaded', dashboard: dashboardQuery.data }); }, [dashboardQuery.data]);
-  useEffect(() => { if (dashboardQuery.isError) navigate('/dashboards'); }, [dashboardQuery.isError, navigate]);
+
+  // A card link (#card-<placement>, from "Copy link") scrolls to that card once it is on the page and outlines it
+  const { hash } = useLocation();
+  const scrolledTo = useRef<string>();
+  useEffect(() => {
+    const target = hash.startsWith('#card-') ? hash.slice(1) : '';
+    const el = target && scrolledTo.current !== target ? document.getElementById(target) : null;
+    if (!el) return;
+    scrolledTo.current = target;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-accent', 'rounded-2xl');
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-accent'), 2500);
+    return () => clearTimeout(t);
+  }, [hash, items]);
 
   /** A write returned the new dashboard: show it now (the cache refresh that follows agrees). */
   const saved = (d: DashboardDetail) => {
@@ -166,9 +196,12 @@ export default function DashboardPage() {
 
   const save = async () => {
     setSaving(true);
+    setSaveError(undefined);
     try {
       // Existing placements keep their pinned card version; new ones pin the card's latest version
       saved(await api.saveDashboardItems(id!, items.map((it) => ({ item_id: it.item_id, card_id: it.id, x: it.x, y: it.y, w: it.w, h: it.h }))));
+    } catch (e) {
+      setSaveError((e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -182,6 +215,9 @@ export default function DashboardPage() {
     }
   };
 
+  if (dashboardQuery.isError && !dashboard) {
+    return <NotFound noun="dashboard" back="/dashboards" backLabel="Back to dashboards" detail={dashboardQuery.error.message} />;
+  }
   if (!dashboard) {
     return <div className="flex h-screen items-center justify-center"><div className="size-6 animate-spin rounded-full border-2 border-line border-t-accent" /></div>;
   }
@@ -247,6 +283,7 @@ export default function DashboardPage() {
           onValues={(values) => dispatch({ type: 'setFilterValues', values })} onPeriod={(p) => dispatch({ type: 'setPeriod', period: p })} />
         {editMode && (
           <div className="flex items-center gap-2">
+            {saveError && <span className="max-w-xs text-xs font-medium text-negative" role="alert">Couldn't save: {saveError}</span>}
             <button onClick={() => setFiltersOpen(true)}
               className="rounded-xl border border-line bg-white px-4 py-2 font-display text-sm font-semibold text-ink-soft transition hover:border-accent/50 hover:text-ink">
               Filters
@@ -272,7 +309,15 @@ export default function DashboardPage() {
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
           <span>
             <span className="font-semibold">{items.filter((it) => it.update_available).length} card(s) have newer versions:</span>{' '}
-            {items.filter((it) => it.update_available).map((it) => it.name).join(', ')}. This dashboard keeps showing the pinned versions until you update.
+            {items.filter((it) => it.update_available).map((it, i) => (
+              <span key={it.item_id}>
+                {i > 0 && ', '}
+                <button onClick={() => setUpdating(it.item_id!)} className="font-semibold underline decoration-amber-400 underline-offset-2 hover:text-amber-700"
+                  title="See what changed and update just this card">
+                  {it.name} (v{it.version} → v{it.latest_version})
+                </button>
+              </span>
+            ))}. This dashboard keeps showing the pinned versions until you update — one card at a time or all at once.
           </span>
           <button onClick={applyUpdates} className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 font-semibold text-white transition hover:bg-amber-600">
             Update all
@@ -283,7 +328,7 @@ export default function DashboardPage() {
       {editMode && (
         <p className="mb-4 rounded-xl border border-accent/30 bg-accent-soft px-4 py-2.5 text-xs font-medium text-accent-deep">
           Edit mode — drag cards by their header, resize from the corner, and add widgets from the library. Saving creates
-          version v{dashboard.version_no + 1}; cards stay pinned to the versions they were added with.
+          a new version; cards stay pinned to the versions they were added with.
         </p>
       )}
 
@@ -301,7 +346,8 @@ export default function DashboardPage() {
       >
         {items.map((it) => (
           <div key={String(it.id)} id={it.item_id ? `card-${it.item_id}` : undefined}>
-            <DashboardCard card={it} dashboardId={dashboard.id} defs={dashboard.filters} applied={applied} period={period} editMode={editMode} onRemove={() => dispatch({ type: 'removeCard', cardId: it.id })} />
+            <DashboardCard card={it} dashboardId={dashboard.id} defs={dashboard.filters} applied={applied} period={period} editMode={editMode}
+              onRemove={() => dispatch({ type: 'removeCard', cardId: it.id })} onShowUpdate={() => setUpdating(it.item_id ?? null)} />
           </div>
         ))}
       </Grid>
@@ -325,6 +371,14 @@ export default function DashboardPage() {
       {dialog === 'history' && (
         <VersionHistory kind="dashboards" assetId={dashboard.id} assetName={dashboard.name} canEdit={dashboard.can_edit}
           onClose={() => setDialog(null)} />
+      )}
+      {updating && items.find((it) => it.item_id === updating) && (
+        <CardUpdateDialog dashboardId={dashboard.id} item={items.find((it) => it.item_id === updating)!}
+          canApply={dashboard.can_edit && !dirty}
+          blockedReason={!dashboard.can_edit
+            ? (dashboard.scope === 'global' ? 'Global dashboards are updated by admins.' : 'You have view-only access to this dashboard.')
+            : 'Save your layout changes first.'}
+          onClose={() => setUpdating(null)} onApplied={saved} />
       )}
       {dialog === 'share' && (
         <ShareDialog kind="dashboards" assetId={dashboard.id} assetName={dashboard.name} onClose={() => setDialog(null)} />
@@ -351,7 +405,7 @@ export default function DashboardPage() {
                   <div key={c.id} className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 transition ${used ? 'border-line bg-canvas/60 opacity-60' : 'border-line bg-white hover:border-accent/50 hover:shadow-sm'}`}>
                     <div className="min-w-0">
                       <p className="truncate font-display text-sm font-bold text-ink">{c.name}</p>
-                      <p className="truncate text-xs text-ink-faint">{c.chart_type.toUpperCase()} · {c.scope === 'global' ? 'Global' : c.owner_name ?? 'Private'} · v{c.version_no}</p>
+                      <p className="truncate text-xs text-ink-faint">{c.chart_type.toUpperCase()} · {c.scope === 'global' ? 'Global' : c.owner_name ?? 'Private'} · v{c.version}</p>
                     </div>
                     <button
                       disabled={used}

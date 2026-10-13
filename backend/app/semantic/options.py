@@ -30,7 +30,8 @@ async def dimension_values(spec: DataSourceSpec, version_id: int, dimension: str
     sql = (f"SELECT DISTINCT {column} AS v FROM {quote_table(ds.name, spec.dialect)} WHERE {column} IS NOT NULL {bound.text()} "
            f"ORDER BY 1 LIMIT {MAX_OPTIONS}")
     rows = await connectors.execute(spec, sql, bound.params, version_id=version_id, max_rows=MAX_OPTIONS)
-    values = [str(r["v"]) for r in rows]
+    # Booleans as the filters compare them (lowercase), not Python's "True"/"False"
+    values = [str(r["v"]).lower() if isinstance(r["v"], bool) else str(r["v"]) for r in rows]
     _cache[key] = (time.monotonic(), values)
     return values
 

@@ -12,7 +12,7 @@ sides is a conflict; `resolutions` ({path: "ours" | "theirs"}) settles conflicts
 from difflib import SequenceMatcher
 from typing import Any
 
-from app.governance.diff import list_key
+from app.governance.diff import line_diff, list_key
 
 
 class _Missing:
@@ -57,7 +57,11 @@ class Merge:
         if choice == "theirs":
             return theirs
         if choice != "ours":
-            self.conflicts.append({"path": path, "base": _plain(base), "ours": _plain(ours), "theirs": _plain(theirs)})
+            conflict = {"path": path, "base": _plain(base), "ours": _plain(ours), "theirs": _plain(theirs)}
+            if all(isinstance(v, str) for v in (base, ours, theirs)) and "\n" in base + ours + theirs:
+                # Multi-line text (SQL): what each side changed, so people see the line, not the whole query
+                conflict["ours_lines"], conflict["theirs_lines"] = line_diff(base, ours), line_diff(base, theirs)
+            self.conflicts.append(conflict)
         return ours
 
     def _dicts(self, base: dict, ours: Any, theirs: Any, path: str) -> Any:

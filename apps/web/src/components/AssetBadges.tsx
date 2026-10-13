@@ -1,7 +1,7 @@
 import type { AssetMeta } from '../lib/types';
 
 /** Scope + version chips shown on every versioned asset (card, dashboard). */
-export default function AssetBadges({ asset, className = '' }: { asset: Pick<AssetMeta, 'scope' | 'access' | 'owner_name' | 'version_no'>; className?: string }) {
+export default function AssetBadges({ asset, className = '' }: { asset: Pick<AssetMeta, 'scope' | 'access' | 'owner_name' | 'version'>; className?: string }) {
   const shared = asset.scope === 'private' && (asset.access === 'view' || asset.access === 'edit');
   const [label, tone, title] = asset.scope === 'global'
     ? ['Global', 'bg-accent text-white', 'Published to the global library']
@@ -11,7 +11,7 @@ export default function AssetBadges({ asset, className = '' }: { asset: Pick<Ass
   return (
     <span className={`inline-flex shrink-0 items-center gap-1 ${className}`}>
       <span title={title} className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone}`}>{label}</span>
-      <span title="Current version" className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-faint">v{asset.version_no}</span>
+      <span title="Current version" className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-faint">v{asset.version}</span>
     </span>
   );
 }

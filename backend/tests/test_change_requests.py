@@ -25,7 +25,67 @@ async def test_fork_creates_one_private_copy_with_lineage(user, admin, seeded):
     copy = (await user.get(f"/api/cards/{first.json()['id']}")).json()
     assert copy["scope"] == "private" and copy["access"] == "owner"
     assert copy["fork"] == {"asset_id": g["id"], "name": g["name"], "base_version_no": 1,
-                            "global_version_no": 1, "stale": False}
+                            "global_version_no": 1, "base_version": "1", "global_version": "1", "deleted": False,
+                            "stale": False}
+
+
+async def test_private_copies_are_numbered_after_their_global_version(user, admin, seeded):
+    g = await global_card(admin, seeded)
+    for desc in ("two", "three"):
+        await admin.put(f"/api/cards/{g['id']}", card_body(seeded["source_id"], name="Global KPI", description=desc))
+    assert (await admin.get(f"/api/cards/{g['id']}")).json()["version"] == "3"
+
+    copy_id = (await user.post(f"/api/cards/{g['id']}/fork")).json()["id"]
+    assert (await user.get(f"/api/cards/{copy_id}")).json()["version"] == "3.1"
+    edited = (await user.put(f"/api/cards/{copy_id}", card_body(seeded["source_id"], name="Global KPI",
+                                                                 description="mine"))).json()
+    assert edited["version"] == "3.2" and edited["fork"]["base_version"] == "3"
+    history = (await user.get(f"/api/cards/{copy_id}/versions")).json()
+    assert [v["version"] for v in history] == ["3.2", "3.1"]
+
+    # Approval publishes the next whole version; the copy then counts from it
+    req = await submit(user, "cards", copy_id)
+    [item] = req["items"]
+    assert item["source_version"] == "3.2" and item["suggested_major"] == 4
+    await admin.post(f"/api/change-requests/{req['id']}/approve", {})
+    assert (await user.get(f"/api/cards/{g['id']}")).json()["version"] == "4"
+    again = (await user.put(f"/api/cards/{copy_id}", card_body(seeded["source_id"], name="Global KPI",
+                                                                description="next"))).json()
+    assert again["version"] == "4.1"
+
+
+async def test_admin_can_choose_a_higher_published_version(user, admin, seeded):
+    g = await global_card(admin, seeded)
+    copy_id = (await user.post(f"/api/cards/{g['id']}/fork")).json()["id"]
+    await user.put(f"/api/cards/{copy_id}", card_body(seeded["source_id"], name="Global KPI", description="v10"))
+    req = await submit(user, "cards", copy_id)
+    item_id = req["items"][0]["id"]
+
+    too_low = await admin.post(f"/api/change-requests/{req['id']}/approve", {"versions": {str(item_id): 1}})
+    assert too_low.status_code == 422
+    ok = await admin.post(f"/api/change-requests/{req['id']}/approve", {"versions": {str(item_id): 10}})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["items"][0]["result_version"] == "10"
+    assert (await user.get(f"/api/cards/{g['id']}")).json()["version"] == "10"
+    # The next global version follows the chosen one
+    nxt = await admin.put(f"/api/cards/{g['id']}", card_body(seeded["source_id"], name="Global KPI", description="x"))
+    assert nxt.json()["version"] == "11"
+
+
+async def test_new_private_assets_are_drafts_until_published(user, admin, seeded):
+    card = (await user.post("/api/cards", card_body(seeded["source_id"], name="Draft idea"))).json()
+    assert card["version"] == "0.1"
+    card = (await user.put(f"/api/cards/{card['id']}", card_body(seeded["source_id"], name="Draft idea",
+                                                                  description="b"))).json()
+    assert card["version"] == "0.2"
+    req = await submit(user, "cards", card["id"])
+    await admin.post(f"/api/change-requests/{req['id']}/approve", {})
+    published = next(c for c in (await user.get("/api/cards", params={"scope": "global"})).json()
+                     if c["name"] == "Draft idea")
+    assert published["version"] == "1"
+    card = (await user.put(f"/api/cards/{card['id']}", card_body(seeded["source_id"], name="Draft idea",
+                                                                  description="c"))).json()
+    assert card["version"] == "1.1"
 
 
 async def test_publish_new_card(user, admin, seeded):
@@ -119,7 +179,7 @@ async def test_conflict_blocks_approval_until_requester_updates_from_global(user
     assert preview["stale"] and [c["path"] for c in preview["conflicts"]] == ["name"]
     assert (await user.post(f"/api/cards/{copy_id}/rebase", {})).status_code == 409   # unresolved
     res = await user.post(f"/api/cards/{copy_id}/rebase", {"resolutions": {"name": "ours"}})
-    assert res.status_code == 200
+    assert res.status_code == 200 and res.json()["version"] == "2.1"   # now based on global v2
 
     # The open request now proposes the rebased version and merges cleanly
     detail = (await admin.get(f"/api/change-requests/{req['id']}")).json()
@@ -168,7 +228,6 @@ async def test_reviewer_can_preview_proposed_card(user, admin, seeded):
     req = await submit(user, "cards", card["id"])
     res = await admin.get(f"/api/change-requests/{req['id']}/items/{req['items'][0]['id']}/data")
     assert res.status_code == 200 and res.json()["rows"][0]["value"] == 60000
-    assert (await admin.get(f"/api/cards/{card['id']}")).status_code == 404  # still private outside the request
 
 
 async def test_apply_card_updates_on_dashboard(user, seeded):
@@ -188,3 +247,37 @@ async def test_summary_counts(path, user, seeded):
     card = (await user.post("/api/cards", card_body(seeded["source_id"]))).json()
     await submit(user, "cards", card["id"])
     assert (await user.get(path)).json()["pending"] == 1
+
+
+async def test_reviewer_can_open_submitted_private_asset_read_only(user, admin, seeded):
+    card = (await user.post("/api/cards", card_body(seeded["source_id"], name="For review"))).json()
+    assert (await admin.get(f"/api/cards/{card['id']}")).status_code == 404   # private, not shared
+    await submit(user, "cards", card["id"])
+    opened = await admin.get(f"/api/cards/{card['id']}")
+    assert opened.status_code == 200 and opened.json()["access"] == "view" and not opened.json()["can_edit"]
+    edit = await admin.put(f"/api/cards/{card['id']}", card_body(seeded["source_id"], name="For review", description="x"))
+    assert edit.status_code == 403
+    # Not listed among the admin's cards
+    assert card["id"] not in {c["id"] for c in (await admin.get("/api/cards")).json()}
+
+
+async def test_impossible_version_numbers_are_refused_not_crashed(user, admin, seeded):
+    g = await global_card(admin, seeded, name="Version cap")
+    copy = (await user.post(f"/api/cards/{g['id']}/fork")).json()["id"]
+    await user.put(f"/api/cards/{copy}", card_body(seeded["source_id"], name="Version cap", description="x"))
+    req = await submit(user, "cards", copy)
+    item = str(req["items"][0]["id"])
+    for bad in (2**40, 100_000, 0, -1):
+        res = await admin.post(f"/api/change-requests/{req['id']}/approve", {"versions": {item: bad}})
+        assert res.status_code == 422, (bad, res.status_code)
+    ok = await admin.post(f"/api/change-requests/{req['id']}/approve", {"versions": {item: 99_999}})
+    assert ok.status_code == 200 and ok.json()["items"][0]["result_version"] == "99999"
+
+
+async def test_a_copy_with_no_changes_cannot_be_sent(user, admin, seeded):
+    g = await global_card(admin, seeded, name="Untouched")
+    copy = (await user.post(f"/api/cards/{g['id']}/fork")).json()["id"]
+    res = await user.post("/api/change-requests", {"kind": "cards", "asset_id": copy, "title": "nothing"})
+    assert res.status_code == 409 and "Nothing to propose" in res.json()["detail"]
+    await user.put(f"/api/cards/{copy}", card_body(seeded["source_id"], name="Untouched", description="now changed"))
+    assert (await user.post("/api/change-requests", {"kind": "cards", "asset_id": copy, "title": "t"})).status_code == 201

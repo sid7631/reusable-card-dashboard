@@ -8,6 +8,7 @@ import GovernanceBar from '../components/GovernanceBar';
 import ModelEditor from '../components/ModelEditor';
 import ShareDialog from '../components/ShareDialog';
 import VersionHistory from '../components/VersionHistory';
+import NotFound from '../components/NotFound';
 import { SOURCE_TYPE_LABEL } from './DataSourcesPage';
 import { useAuth } from '../lib/auth';
 
@@ -92,7 +93,6 @@ export default function DataSourceEditor() {
   // Fill the form once per version: refetches never overwrite edits in progress, while a save,
   // restore or update from global (each a new version) refills it
   const seeded = useRef<string>();
-  useEffect(() => { if (sourceQuery.isError) navigate('/data-sources'); }, [sourceQuery.isError, navigate]);
   useEffect(() => {
     const s = sourceQuery.data;
     if (!s || seeded.current === `${s.id}:${s.version_no}`) return;
@@ -173,6 +173,8 @@ export default function DataSourceEditor() {
   const testable = spec.type === 'postgres' ? Boolean(conn?.host && conn.database && conn.user)
     : spec.type === 'rest' ? Boolean(rest?.url)
       : spec.type === 'bigquery' ? Boolean(bq?.project && bq.dataset && (bq.auth === 'adc' || secret || source?.has_credentials)) : false;
+
+  if (sourceQuery.isError) return <NotFound noun="data source" back="/data-sources" backLabel="Back to data sources" detail={sourceQuery.error.message} />;
 
   return (
     <div className="px-10 py-8 pb-28">
@@ -387,7 +389,7 @@ export default function DataSourceEditor() {
             <button onClick={save} disabled={saving || !name.trim() || !spec.model.datasets.length}
               title={!spec.model.datasets.length ? 'Expose at least one table' : undefined}
               className="rounded-xl bg-accent px-5 py-2.5 font-display text-sm font-semibold text-white shadow-sm transition enabled:hover:bg-accent-deep disabled:opacity-40">
-              {saving ? 'Saving…' : editing ? `Save as v${(source?.version_no ?? 0) + 1}` : 'Create private source'}
+              {saving ? 'Saving…' : editing ? 'Save new version' : 'Create private source'}
             </button>
           </div>
         </div>

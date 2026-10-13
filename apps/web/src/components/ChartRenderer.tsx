@@ -3,7 +3,7 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import type { CardData, ChartType, Row } from '../lib/types';
+import type { CardConfig, CardData, ChartType, Row } from '../lib/types';
 import { formatCell, formatMoney, formatNumber, schemeColors } from '../lib/format';
 import { AppThemeContext } from '../lib/theme';
 
@@ -18,7 +18,12 @@ interface Props {
   rank?: boolean;
   /** Color scheme id from SCHEMES; default 'classic'. */
   scheme?: string;
+  /** KPI value format (default currency). */
+  format?: CardConfig['format'];
 }
+
+const formatValue = (value: number, format: CardConfig['format'] = 'currency') =>
+  format === 'number' ? formatNumber(value) : format === 'percent' ? `${(value * 100).toFixed(1)}%` : formatMoney(value);
 
 function inferKeys(rows: Row[], xKey?: string, yKeys?: string[]): { labelKey: string; seriesKeys: string[] } {
   if (!rows.length) return { labelKey: 'label', seriesKeys: [] };
@@ -50,7 +55,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   );
 }
 
-function Kpi({ data }: { data: CardData }) {
+function Kpi({ data, format }: { data: CardData; format?: CardConfig['format'] }) {
   const rows = data.rows;
   const raw = Object.values(rows[0] ?? {})[0];
   const value = Number(raw ?? 0);
@@ -58,16 +63,17 @@ function Kpi({ data }: { data: CardData }) {
   const positive = (deltaPct ?? 0) >= 0;
   return (
     <div className="flex h-full flex-col justify-center px-1">
-      <p className="font-display text-4xl font-bold tracking-tight text-ink">{formatMoney(value)}</p>
+      <p className="font-display text-4xl font-bold tracking-tight text-ink">{formatValue(value, format)}</p>
       {deltaPct !== undefined && deltaAbs !== undefined ? (
         <p className={`mt-2 text-sm font-medium ${positive ? 'text-positive' : 'text-negative'}`}>
-          {positive ? '▲' : '▼'} {formatMoney(Math.abs(deltaAbs))} ({positive ? '+' : ''}{deltaPct.toFixed(0)}% YoY)
+          {positive ? '▲' : '▼'} {formatValue(Math.abs(deltaAbs), format)} ({positive ? '+' : ''}{deltaPct.toFixed(0)}% YoY)
         </p>
       ) : (
         <p className="mt-2 text-sm text-ink-faint">
           {raw === null || raw === undefined ? 'No data for these filters'
             : data.meta?.ignored?.includes('period') ? 'All time — period doesn’t apply to this source'
-              : data.meta?.applied?.includes('period') ? 'No prior-year data to compare' : 'vs prior year — select a period'}
+              : data.meta?.applied?.includes('period') ? 'No prior-year data to compare'
+                : 'All time'}
         </p>
       )}
     </div>
@@ -160,12 +166,12 @@ function DataTable({ rows }: { rows: Row[] }) {
   );
 }
 
-export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys, rank = false, scheme }: Props) {
+export default function ChartRenderer({ chartType, data, compact = false, xKey, yKeys, rank = false, scheme, format }: Props) {
   // No explicit card scheme → follow the app-level theme palette
   const appTheme = useContext(AppThemeContext);
   const colors = schemeColors(scheme ?? appTheme);
   const rows = data.rows;
-  if (chartType === 'kpi') return <Kpi data={data} />;
+  if (chartType === 'kpi') return <Kpi data={data} format={format} />;
   if (!rows.length) {
     return <div className="flex h-full items-center justify-center text-sm text-ink-faint">No data for the selected filters</div>;
   }

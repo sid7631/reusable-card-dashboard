@@ -67,7 +67,7 @@ class ApplyUpdatesIn(BaseModel):
 
 @router.get("")
 async def list_dashboards(user: CurrentUser, session: Session,
-                          scope: Literal["global", "private", "shared"] | None = None) -> list[dict[str, Any]]:
+                          scope: Literal["global", "private", "shared", "deleted"] | None = None) -> list[dict[str, Any]]:
     rows = await list_visible(session, user, "dashboard", scope)
     gov = await governance_info(session, [a for a, *_ in rows])
     return [{**asset_meta(a, v, access, owner, gov[a.id]), "card_count": len(v.spec.get("items", []))}
@@ -286,6 +286,9 @@ async def _detail(session: AsyncSession, user: User, asset: Asset, access: str) 
         .where(AssetVersion.id.in_(pinned_ids))
     )).all() if pinned_ids else []
     by_version = {v.id: (v, a, owner, perm) for v, a, owner, perm in rows}
+    # Newer card versions, for "update available" (the UI shows pinned → latest and diffs them)
+    newer = {a.head_version_id for _v, a, *_ in rows if a.head_version_id != _v.id}
+    latest = {v.id: v for v in await session.scalars(select(AssetVersion).where(AssetVersion.id.in_(newer)))} if newer else {}
 
     items = []
     for item in spec.items:
@@ -300,6 +303,10 @@ async def _detail(session: AsyncSession, user: User, asset: Asset, access: str) 
             "card_version_id": v.id,
             "latest_version_id": a.head_version_id,
             "update_available": a.archived_at is None and a.head_version_id != v.id,
+            # Deleted after it was added: it keeps working here (pinned) but gets no more updates
+            "deleted": a.archived_at is not None,
+            **({"latest_version_no": latest[a.head_version_id].version_no,
+                "latest_version": latest[a.head_version_id].label} if a.head_version_id in latest else {}),
         })
 
     gov = (await governance_info(session, [asset]))[asset.id]

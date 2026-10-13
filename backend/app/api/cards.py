@@ -59,7 +59,7 @@ async def _card_spec(session: AsyncSession, user: User, body: CardIn) -> dict[st
 
 @router.get("")
 async def list_cards(user: CurrentUser, session: Session,
-                     scope: Literal["global", "private", "shared"] | None = None) -> list[dict[str, Any]]:
+                     scope: Literal["global", "private", "shared", "deleted"] | None = None) -> list[dict[str, Any]]:
     rows = await list_visible(session, user, "card", scope)
     gov = await governance_info(session, [a for a, *_ in rows])
     return [card_out(a, v, access, owner, gov[a.id]) for a, v, owner, access in rows]

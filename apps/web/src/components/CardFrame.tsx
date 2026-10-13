@@ -19,7 +19,7 @@ interface Props {
   asOf?: number;
   stale?: boolean;
   /** Small attention chips in the header, e.g. "update available", "partly filtered". */
-  notices?: { label: string; title: string }[];
+  notices?: { label: string; title: string; onClick?: () => void }[];
 }
 
 const VIA_BADGE: Record<string, string> = {
@@ -52,7 +52,12 @@ export default function CardFrame({ card, rows, children, controls, context = DE
           <p className="truncate text-[11px] text-ink-faint" title={card.description}>{card.description || ' '}</p>
         </div>
         <div ref={menuRef} className="relative flex shrink-0 items-center gap-1">
-          {notices.map((n) => (
+          {notices.map((n) => n.onClick ? (
+            <button key={n.label} title={n.title} onClick={n.onClick} onMouseDown={(e) => e.stopPropagation()}
+              className="whitespace-nowrap rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 transition hover:bg-amber-200">
+              {n.label}
+            </button>
+          ) : (
             <span key={n.label} title={n.title} className="whitespace-nowrap rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
               {n.label}
             </span>
@@ -74,7 +79,7 @@ export default function CardFrame({ card, rows, children, controls, context = DE
             <div className="rise-in absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
               <MenuItem label="Export data" icon="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" onClick={action(() => setModal('export'))} />
               <MenuItem label="View SQL script" icon="M5 4l-3 4 3 4m6-8l3 4-3 4" onClick={action(() => setModal('sql'))} />
-              <MenuItem label="Send snapshot" icon="M11 5a2 2 0 102-2 2 2 0 00-2 2zm0 0L5 8m0 0a2 2 0 10-2 2 2 2 0 002-2zm0 2l6 3m0 0a2 2 0 102 2 2 2 0 00-2-2z" onClick={action(() => setModal('share'))} />
+              <MenuItem label="Copy link" icon="M11 5a2 2 0 102-2 2 2 0 00-2 2zm0 0L5 8m0 0a2 2 0 10-2 2 2 2 0 002-2zm0 2l6 3m0 0a2 2 0 102 2 2 2 0 00-2-2z" onClick={action(() => setModal('share'))} />
               {editMode && onRemove && (
                 <>
                   <div className="my-1 border-t border-line" />

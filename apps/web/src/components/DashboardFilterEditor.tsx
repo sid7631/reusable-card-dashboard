@@ -20,6 +20,8 @@ export default function DashboardFilterEditor({ dashboard, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
 
 
+  const autoLabel = (dimension: string) => dims.find((x) => x.name === dimension)?.label ?? dimensionLabel(dimension);
+
   const period = defs.find((d) => d.kind === 'period');
   const dimensionFilters = defs.filter((d) => d.kind !== 'period');
   const update = (id: string, patch: Partial<DashboardFilterDef>) => setDefs((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
@@ -59,7 +61,11 @@ export default function DashboardFilterEditor({ dashboard, onClose, onSaved }: {
               <input value={d.label} onChange={(e) => update(d.id, { label: e.target.value })} className={`${field} mt-1 normal-case`} />
             </label>
             <label className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">Dimension
-              <select value={d.dimension} onChange={(e) => update(d.id, { dimension: e.target.value, default: [] })} className={`${field} mt-1 normal-case`}>
+              <select value={d.dimension} onChange={(e) => update(d.id, {
+                dimension: e.target.value, default: [],
+                // A label that was just the old dimension's name follows the new one; a typed label stays
+                ...(d.label === autoLabel(d.dimension) || !d.label ? { label: autoLabel(e.target.value) } : {}),
+              })} className={`${field} mt-1 normal-case`}>
                 {[...dims, ...(dims.some((x) => x.name === d.dimension) ? [] : [{ name: d.dimension, label: dimensionLabel(d.dimension), sources: [] }])].map((x) => (
                   <option key={x.name} value={x.name}>{x.label}{x.sources.length > 1 ? ` (${x.sources.length} sources)` : ''}</option>
                 ))}
@@ -110,7 +116,7 @@ export default function DashboardFilterEditor({ dashboard, onClose, onSaved }: {
       {error && <p className="mt-3 text-sm text-negative">{error}</p>}
       <div className="mt-4 flex justify-end border-t border-line pt-4">
         <button onClick={save} disabled={saving} className="rounded-lg bg-accent px-5 py-2 font-display text-sm font-semibold text-white transition enabled:hover:bg-accent-deep disabled:opacity-50">
-          {saving ? 'Saving…' : `Save filters (v${dashboard.version_no + 1})`}
+          {saving ? 'Saving…' : 'Save filters'}
         </button>
       </div>
     </Modal>

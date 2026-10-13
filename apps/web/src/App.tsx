@@ -4,6 +4,7 @@ import DashboardsPage from './pages/DashboardsPage';
 import DashboardPage from './pages/DashboardPage';
 import CardsPage from './pages/CardsPage';
 import CardStudio from './pages/CardStudio';
+import NewCardPage from './pages/NewCardPage';
 import LoginPage from './pages/LoginPage';
 import RequestsPage from './pages/RequestsPage';
 import DataSourcesPage from './pages/DataSourcesPage';
@@ -15,13 +16,17 @@ import DemoRecorder from './features/demo-recorder';
 import { AuthContext, currentUser, signOut, type SessionUser } from './lib/auth';
 import { APP_THEMES, AppThemeContext, applyAppTheme, loadAppTheme } from './lib/theme';
 
-function NavItem({ to, label, icon, collapsed, badge }: { to: string; label: string; icon: string; collapsed: boolean; badge?: number }) {
+function NavItem({ to, label, icon, collapsed, badge, dot }: {
+  to: string; label: string; icon: string; collapsed: boolean; badge?: number;
+  /** A second, blue marker — e.g. unread messages. */
+  dot?: { count: number; title: string };
+}) {
   return (
     <NavLink
       to={to}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-xl py-2.5 font-display text-sm font-semibold transition ${
+        `flex items-center gap-3 whitespace-nowrap rounded-xl py-2.5 font-display text-sm font-semibold transition ${
           collapsed ? 'justify-center px-0' : 'px-3.5'
         } ${isActive ? 'bg-white/10 text-white' : 'text-sky-200/70 hover:bg-white/5 hover:text-white'}`
       }
@@ -29,10 +34,15 @@ function NavItem({ to, label, icon, collapsed, badge }: { to: string; label: str
       <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
         <path d={icon} />
       </svg>
-      {!collapsed && label}
+      {!collapsed && <span className="truncate">{label}</span>}
       {Boolean(badge) && (
         <span className={`rounded-full bg-amber-400 px-1.5 text-[10px] font-bold leading-4 text-accent-deep ${collapsed ? 'absolute ml-6 -mt-5' : 'ml-auto'}`}>
           {badge}
+        </span>
+      )}
+      {Boolean(dot?.count) && !collapsed && (
+        <span title={dot!.title} className={`rounded-full bg-sky-400 px-1.5 text-[10px] font-bold leading-4 text-accent-deep ${badge ? '' : 'ml-auto'}`}>
+          {dot!.count}
         </span>
       )}
     </NavLink>
@@ -63,7 +73,9 @@ export default function App() {
 function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sb-sidebar-collapsed') === '1');
   const [theme, setTheme] = useState(loadAppTheme);
-  const pending = useRequestSummary().data?.pending ?? 0;
+  const requestSummary = useRequestSummary().data;
+  const pending = requestSummary?.pending ?? 0;
+  const unread = requestSummary?.unread ?? 0;
   const location = useLocation();
 
   useEffect(() => { applyAppTheme(theme); }, [theme]);
@@ -105,6 +117,7 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
           <NavItem to="/cards" label="Card Library" icon="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2zM2 6.5h12" collapsed={collapsed} />
           <NavItem to="/data-sources" label="Data Sources" icon="M8 2c3.3 0 6 1.1 6 2.5S11.3 7 8 7 2 5.9 2 4.5 4.7 2 8 2zM2 4.5v7C2 12.9 4.7 14 8 14s6-1.1 6-2.5v-7M2 8c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5" collapsed={collapsed} />
           <NavItem to="/requests" label={user.role === 'admin' ? 'Approvals' : 'My requests'} badge={pending}
+            dot={{ count: unread, title: `${unread} new message${unread === 1 ? '' : 's'} on requests` }}
             icon="M3 8.5l3 3 7-7M2 2h12v12H2z" collapsed={collapsed} />
         </nav>
         <div className="mt-auto space-y-3">
@@ -156,7 +169,7 @@ function Shell({ user, onSignOut }: { user: SessionUser; onSignOut: () => void }
           <Route path="/dashboards" element={<DashboardsPage />} />
           <Route path="/dashboards/:id" element={<DashboardPage />} />
           <Route path="/cards" element={<CardsPage />} />
-          <Route path="/cards/new" element={<CardStudio />} />
+          <Route path="/cards/new" element={<NewCardPage />} />
           <Route path="/cards/:id/edit" element={<CardStudio />} />
           <Route path="/data-sources" element={<DataSourcesPage />} />
           <Route path="/data-sources/new" element={<DataSourceEditor />} />

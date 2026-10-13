@@ -60,8 +60,13 @@ def diff_values(before: Any, after: Any, path: str = "") -> list[Change]:
         return [Change(path, "changed", before, after)]
     change = Change(path, "changed", before, after)
     if isinstance(before, str) and isinstance(after, str) and ("\n" in before or "\n" in after):
-        change.lines = list(difflib.unified_diff(before.splitlines(), after.splitlines(), lineterm="", n=2))[2:]
+        change.lines = line_diff(before, after)
     return [change]
+
+
+def line_diff(before: str, after: str, context: int = 2) -> list[str]:
+    """Unified diff lines (hunk headers, ' ', '-', '+'), without the file header."""
+    return list(difflib.unified_diff(before.splitlines(), after.splitlines(), lineterm="", n=context))[2:]
 
 
 def diff_versions(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:

@@ -10,9 +10,10 @@ from app.api.listing import versions_of
 from app.api.serializers import version_out
 from app.core.auth import CurrentUser, Session
 from app.governance.diff import diff_versions
-from app.governance.requests import fork_asset, rebase, rebase_preview
-from app.governance.service import get_asset, remove_share, restore_version, set_share
-from app.models import AssetShare, AssetVersion, User
+from app.governance.labels import diff_labels
+from app.governance.requests import asset_usage, fork_asset, rebase, rebase_preview
+from app.governance.service import get_asset, remove_share, restore_version, set_share, undelete_asset
+from app.models import Asset, AssetShare, AssetVersion, User
 
 
 class ShareIn(BaseModel):
@@ -58,8 +59,9 @@ def asset_router(kind: str, prefix: str) -> APIRouter:
                  else await session.get(AssetVersion, asset.head_version_id))
         snapshot = lambda v: {"name": v.name, "description": v.description, "spec": v.spec}  # noqa: E731
         return {"from": before.version_no, "to": after.version_no,
+                "from_version": before.label, "to_version": after.label,
                 "changes": diff_versions(snapshot(before), snapshot(after)),
-                "labels": await _item_labels(session, before, after)}
+                "labels": await diff_labels(session, before.spec, after.spec)}
 
     @router.post("/{asset_id}/restore/{version_no}")
     async def restore(asset_id: int, version_no: int, user: CurrentUser, session: Session) -> dict[str, Any]:
@@ -91,6 +93,21 @@ def asset_router(kind: str, prefix: str) -> APIRouter:
         await session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @router.get("/{asset_id}/usage")
+    async def usage(asset_id: int, user: CurrentUser, session: Session) -> dict[str, Any]:
+        """What deleting this would affect — shown before the delete is confirmed."""
+        asset, _ = await get_asset(session, user, kind, asset_id)
+        return await asset_usage(session, user, asset)
+
+    @router.post("/{asset_id}/undelete")
+    async def undelete(asset_id: int, user: CurrentUser, session: Session) -> dict[str, Any]:
+        asset = await session.get(Asset, asset_id)
+        if asset is None or asset.kind != kind:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        await undelete_asset(session, user, asset)
+        await session.commit()
+        return {"id": asset.id, "restored": True}
+
     @router.post("/{asset_id}/fork")
     async def fork(asset_id: int, user: CurrentUser, session: Session, response: Response) -> dict[str, Any]:
         """Edit a global asset: returns the caller's private copy (created on first use)."""
@@ -112,16 +129,6 @@ def asset_router(kind: str, prefix: str) -> APIRouter:
         asset, _ = await get_asset(session, user, kind, asset_id, write=True)
         version = await rebase(session, user, asset, body.resolutions)
         await session.commit()
-        return {"version_no": version.version_no if version else None}
+        return {"version_no": version.version_no if version else None, "version": version.label if version else None}
 
     return router
-
-
-async def _item_labels(session, *versions: AssetVersion) -> dict[str, str]:
-    """Dashboard diffs key placements by item_id; map those ids to card names for display."""
-    items = {i["item_id"]: i["card"]["version_id"] for v in versions for i in v.spec.get("items", [])}
-    if not items:
-        return {}
-    names = dict((await session.execute(
-        select(AssetVersion.id, AssetVersion.name).where(AssetVersion.id.in_(set(items.values()))))).all())
-    return {item_id: names.get(version_id, "card") for item_id, version_id in items.items()}

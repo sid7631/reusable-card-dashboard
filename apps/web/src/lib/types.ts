@@ -8,6 +8,8 @@ export interface CardFilter {
 export interface CardConfig {
   /** Model measure name (semantic builder). Absent = ad-hoc `agg` of `metric`. */
   measure?: string;
+  /** How KPI values read; taken from the measure's format. Absent = currency (spend). */
+  format?: 'number' | 'currency' | 'percent';
   dimension?: string;
   /** Optional secondary category for bar lists (e.g. industry → sub-industry). */
   dimension2?: string;
@@ -52,15 +54,22 @@ export interface AssetMeta {
   access: Access;
   can_edit: boolean;
   version_id: number;
+  /** Gapless save counter (history URLs); show `version` to people. */
   version_no: number;
+  /** Display version: "3" (global), "3.2" (private copy of global v3), "0.2" (never published). */
+  version: string;
   head_version_id: number;
   forked_from_asset_id: number | null;
   created_at: string;
   updated_at: string;
+  /** Set in the "Deleted" list — deleted assets can be restored. */
+  deleted_at: string | null;
   /** Open change request that includes this asset. */
   pending_request_id: number | null;
   /** Set when this is a private copy of a global asset. */
   fork: ForkInfo | null;
+  /** Global assets: open change requests that would change it. */
+  open_requests: OpenRequestRef[];
 }
 
 export interface ForkInfo {
@@ -68,6 +77,10 @@ export interface ForkInfo {
   name: string;
   base_version_no: number;
   global_version_no: number;
+  base_version: string;
+  global_version: string | null;
+  /** The global original was deleted: this copy stays, and would be published as a new asset. */
+  deleted: boolean;
   /** Global has moved on since this copy was made / last updated. */
   stale: boolean;
 }
@@ -77,19 +90,51 @@ export interface Conflict {
   base: unknown;
   ours: unknown;
   theirs: unknown;
+  /** Multi-line text (SQL): each side's change as unified-diff lines, against the common base. */
+  ours_lines?: string[];
+  theirs_lines?: string[];
+}
+
+/** What deleting an asset affects. Other people's private assets are only counted. */
+export interface AssetUsage {
+  used_by: { id: number; kind: 'card' | 'dashboard' | 'data_source'; name: string; scope: Scope; owner_name: string | null }[];
+  used_by_others: number;
+  copies: number;
+  open_requests: OpenRequestRef[];
+}
+
+/** An open change request touching an asset. */
+export interface OpenRequestRef {
+  id: number;
+  requested_by_name: string;
+  title?: string;
 }
 
 export interface RebasePreview {
   global_asset_id: number;
   base_version_no: number;
   global_version_no: number;
+  base_version: string;
+  global_version: string;
   stale: boolean;
   conflicts: Conflict[];
   incoming: SpecChange[];
   result: SpecChange[];
 }
 
-export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+/** pending = in review; changes_requested = open, back with the requester. */
+export type RequestStatus = 'pending' | 'changes_requested' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface RequestComment {
+  id: number;
+  /** A message, or a review step recorded in the conversation. */
+  kind: 'comment' | 'changes_requested' | 'resubmitted' | 'approved' | 'rejected' | 'withdrawn';
+  body: string;
+  author_id: number;
+  author_name: string;
+  author_role: 'user' | 'admin';
+  created_at: string;
+}
 
 export interface ChangeRequestSummary {
   id: number;
@@ -107,6 +152,8 @@ export interface ChangeRequestSummary {
   root_kind?: 'card' | 'dashboard' | 'data_source';
   root_name?: string;
   item_count?: number;
+  /** Messages from others since the viewer last opened the request. */
+  unread?: number;
 }
 
 export interface ChangeRequestItem {
@@ -116,25 +163,45 @@ export interface ChangeRequestItem {
   position: number;
   source_asset_id: number;
   source_version_no: number;
+  source_version: string;
   name: string;
   result_version_id: number | null;
+  /** Global version this item was published as (approved requests). */
+  result_version?: string;
+  /** Global version approval publishes by default; the admin may choose any number ≥ min_major. */
+  suggested_major: number;
+  min_major: number;
   target_asset_id?: number;
   target_name?: string;
   base_version_no?: number;
   global_version_no?: number;
+  base_version?: string;
+  global_version?: string;
   stale: boolean;
   unchanged: boolean;
   changes: SpecChange[];
   conflicts: Conflict[];
+  /** Other open requests changing the same global asset — approving this one can conflict them. */
+  also_affects?: OpenRequestRef[];
+  /** The global asset this would update was deleted after the request was sent. */
+  target_deleted?: boolean;
+  /** Names for ids in the diff (placements, `source:<id>`). */
+  labels?: Record<string, string>;
 }
 
 export interface ChangeRequestDetail extends ChangeRequestSummary {
   items: ChangeRequestItem[];
+  comments: RequestComment[];
   has_conflicts: boolean;
+  /** The viewer sent this request. */
+  is_requester: boolean;
   can_approve: boolean;
+  can_request_changes: boolean;
   can_reject: boolean;
   can_withdraw: boolean;
   can_update: boolean;
+  can_resubmit: boolean;
+  can_comment: boolean;
 }
 
 export type MeasureRef = { name: string; label?: string } | { agg: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX' | 'COUNT_DISTINCT'; column?: string; label?: string };
@@ -173,7 +240,12 @@ export interface DashboardItem extends Card {
   /** Card version pinned by this dashboard version. */
   card_version_id?: number;
   latest_version_id?: number;
+  /** Set when update_available: the newest card version, to diff against the pinned one. */
+  latest_version_no?: number;
+  latest_version?: string;
   update_available?: boolean;
+  /** The card was deleted after it was added: it keeps working here but gets no updates. */
+  deleted?: boolean;
   /** What the card's source can be filtered by. */
   filterable?: { dimensions: string[]; time: boolean };
   x: number;
@@ -204,6 +276,7 @@ export interface DashboardDetail extends Dashboard {
 export interface VersionInfo {
   id: number;
   version_no: number;
+  version: string;
   name: string;
   change_note: string;
   created_by: number;
@@ -227,8 +300,10 @@ export interface SpecChange {
 }
 
 export interface VersionDiff {
-  from: number;
-  to: number;
+  from: number | string;
+  to: number | string;
+  from_version?: string;
+  to_version?: string;
   changes: SpecChange[];
   /** Dashboard placement id → card name. */
   labels: Record<string, string>;
@@ -329,6 +404,9 @@ export interface Dataset {
   model: SemanticModel;
   /** Set when the source could not be reached. */
   error?: string;
+  /** Still being read on the server (slow source); the list is asked again shortly. */
+  loading?: boolean;
+  scope: Scope;
   /** Primary table. */
   name: string;
   label: string;

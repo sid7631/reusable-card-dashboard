@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.governance.service import visible_to
@@ -23,9 +23,16 @@ async def list_visible(session: AsyncSession, user: User, kind: str, scope: str 
         .outerjoin(User, Asset.owner_id == User.id)
         .outerjoin(AssetShare, (AssetShare.asset_id == Asset.id) & (AssetShare.grantee_type == "user")
                    & (AssetShare.grantee_id == user.id))
-        .where(Asset.kind == kind, visible_to(user))
+        .where(Asset.kind == kind)
         .order_by(Asset.scope.desc(), Asset.updated_at.desc())
     )
+    if scope == "deleted":
+        # What this user may restore: their own deleted assets, and (admins) deleted global ones
+        mine = and_(Asset.scope == "private", Asset.owner_id == user.id)
+        query = query.where(Asset.archived_at.is_not(None),
+                            or_(mine, Asset.scope == "global") if user.role == "admin" else mine)
+    else:
+        query = query.where(visible_to(user))
     if scope == "global":
         query = query.where(Asset.scope == "global")
     elif scope == "private":

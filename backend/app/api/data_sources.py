@@ -23,7 +23,7 @@ from app.semantic.dialects import TEMPORAL_TYPES, quote_table
 from app.semantic.filters import Filters
 from app.semantic.options import dimension_values
 from app.governance.requests import governance_info
-from app.governance.service import archive_asset, create_asset, get_asset, parse_spec, save_version
+from app.governance.service import WRITE_ACCESS, archive_asset, create_asset, get_asset, parse_spec, save_version
 from app.governance.specs import DataSourceSpec
 from app.models import Asset, AssetVersion, FileObject, User
 
@@ -81,7 +81,7 @@ def _out(asset: Asset, version: AssetVersion, access: str | None, owner: str | N
 # ---------------------------------------------------------------- CRUD
 @router.get("/data-sources")
 async def list_data_sources(user: CurrentUser, session: Session,
-                            scope: Literal["global", "private", "shared"] | None = None) -> list[dict[str, Any]]:
+                            scope: Literal["global", "private", "shared", "deleted"] | None = None) -> list[dict[str, Any]]:
     rows = await list_visible(session, user, "data_source", scope)
     gov = await governance_info(session, [a for a, *_ in rows])
     return [_out(a, v, access, owner, gov[a.id]) for a, v, owner, access in rows]
@@ -144,6 +144,13 @@ async def delete_data_source(source_id: int, user: CurrentUser, session: Session
 async def test_data_source(body: TestIn, user: CurrentUser, session: Session) -> dict[str, Any]:
     """Try a connection before saving. Returns tables, sample rows (REST) and a suggested semantic model."""
     raw = dict(body.spec)
+    if body.data_source_id is not None:
+        asset, level = await get_asset(session, user, "data_source", body.data_source_id)
+        if level not in WRITE_ACCESS:
+            # View-only (an analyst on a global source, a reviewer on a submitted one): test the source exactly
+            # as saved — never edited settings with its stored credential
+            raw = (await _head_spec(session, asset)).model_dump(mode="json")
+            body = body.model_copy(update={"credentials": None})
     for section in ("connection", "rest", "bigquery"):
         if raw.get(section) is not None:
             raw[section] = {**raw[section], **({"auth": {**raw[section].get("auth", {})}} if section == "rest" else {})}
@@ -153,7 +160,6 @@ async def test_data_source(body: TestIn, user: CurrentUser, session: Session) ->
 
     inherited = None
     if body.data_source_id is not None and not body.credentials:
-        asset, _ = await get_asset(session, user, "data_source", body.data_source_id, write=True)
         inherited = _head_secret(await _head_spec(session, asset), spec)
     if not is_admin and inherited is None:
         fields = [*(spec.connection.model_dump().values() if spec.connection else [])]
@@ -218,14 +224,18 @@ async def upload_file(file: UploadFile, user: CurrentUser, session: Session) -> 
 # Changes only with a new data-source version (or REST refresh); moves to Redis in phase 5
 _catalog_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 _CATALOG_TTL_S = 300
+# Builds in flight, so a slow source is built once and keeps building after a request stops waiting
+_catalog_builds: dict[int, asyncio.Task] = {}
+# How long the source list waits for one source before showing it as still loading
+CATALOG_WAIT_S = 3.0
 
 
-async def _catalog(version: AssetVersion) -> dict[str, Any]:
-    hit = _catalog_cache.get(version.id)
+async def _catalog(version_id: int, raw_spec: dict[str, Any]) -> dict[str, Any]:
+    hit = _catalog_cache.get(version_id)
     if hit and time.monotonic() - hit[0] < _CATALOG_TTL_S:
         return hit[1]
-    spec = DataSourceSpec.model_validate(version.spec)
-    tables = await connectors.introspect(spec, version_id=version.id)
+    spec = DataSourceSpec.model_validate(raw_spec)
+    tables = await connectors.introspect(spec, version_id=version_id)
     if spec.type in ("postgres", "bigquery") and spec.model.datasets:
         modelled = {d.name for d in spec.model.datasets}
         tables = [t for t in tables if t["name"] in modelled]
@@ -233,39 +243,51 @@ async def _catalog(version: AssetVersion) -> dict[str, Any]:
         for t in tables:  # exact counts for modelled tables (estimates can be stale; BigQuery metadata is exact)
             rows = await connectors.execute(spec, f'SELECT COUNT(*) AS n FROM {quote_table(t["name"], spec.dialect)}', [])
             t["row_count"] = rows[0]["n"]
-    values: dict[str, list[str]] = {}
     primary = spec.model.datasets[0] if spec.model.datasets else None
-    for dim in (primary.dimensions if primary else []):
-        if dim.type in TEMPORAL_TYPES:
-            continue
-        # Same cached, capped lookup as filter dropdowns — on BigQuery every distinct-value query is a billed scan
-        values[dim.name] = (await dimension_values(spec, version.id, dim.name, Filters()))[:200]
-    catalog = {"tables": tables, "dimensionValues": values}
-    _catalog_cache[version.id] = (time.monotonic(), catalog)
+    dims = [d.name for d in (primary.dimensions if primary else []) if d.type not in TEMPORAL_TYPES]
+    # Same cached, capped lookup as filter dropdowns — on BigQuery every distinct-value query is a billed scan.
+    # Run together: one after another, a remote source adds up a round trip per field
+    found = await asyncio.gather(*(dimension_values(spec, version_id, d, Filters()) for d in dims))
+    catalog = {"tables": tables, "dimensionValues": {d: v[:200] for d, v in zip(dims, found, strict=True)}}
+    _catalog_cache[version_id] = (time.monotonic(), catalog)
     return catalog
+
+
+def _catalog_build(version: AssetVersion) -> asyncio.Task:
+    task = _catalog_builds.get(version.id)
+    if task is None:
+        task = asyncio.create_task(_catalog(version.id, version.spec))
+        _catalog_builds[version.id] = task
+        task.add_done_callback(lambda _t, vid=version.id: _catalog_builds.pop(vid, None))
+    return task
 
 
 @router.get("/datasets")
 async def list_datasets(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
-    """Builder metadata for every visible data source: tables, semantic model, dimension values."""
-    out = []
-    for asset, version, _owner, _access in await list_visible(session, user, "data_source"):
+    """Builder metadata for every visible data source: tables, semantic model, dimension values.
+
+    Sources are read side by side; one that takes longer than CATALOG_WAIT_S comes back with
+    `loading: true` (it keeps building, and the client asks again) instead of holding up the list."""
+    async def entry(asset: Asset, version: AssetVersion) -> dict[str, Any]:
         spec = DataSourceSpec.model_validate(version.spec)
+        base = {"id": asset.id, "version_id": version.id, "label": version.name, "type": spec.type, "scope": asset.scope,
+                "dialect": spec.dialect, "model": spec.model.model_dump()}
+        empty = {"tables": [], "name": "", "rowCount": 0, "columns": [], "dimensionValues": {}}
         try:
-            catalog = await _catalog(version)
+            catalog = await asyncio.wait_for(asyncio.shield(_catalog_build(version)), CATALOG_WAIT_S)
+        except TimeoutError:
+            return {**base, **empty, "loading": True, "error": "Still reading this source — a moment…"}
         except QueryError as exc:
-            out.append({"id": asset.id, "version_id": version.id, "label": version.name, "type": spec.type,
-                        "dialect": spec.dialect, "error": str(exc), "tables": [], "model": spec.model.model_dump(),
-                        "name": "", "rowCount": 0, "columns": [], "dimensionValues": {}})
-            continue
+            return {**base, **empty, "error": str(exc)}
         first = catalog["tables"][0] if catalog["tables"] else {"name": "", "row_count": 0, "columns": []}
-        out.append({"id": asset.id, "version_id": version.id, "label": version.name, "type": spec.type,
-                    "dialect": spec.dialect, "tables": catalog["tables"], "model": spec.model.model_dump(),
-                    # primary table, for the builder
-                    "name": spec.model.datasets[0].name if spec.model.datasets else first["name"],
-                    "rowCount": first["row_count"], "columns": first["columns"],
-                    "dimensionValues": catalog["dimensionValues"]})
-    return out
+        return {**base, "tables": catalog["tables"],
+                # primary table, for the builder
+                "name": spec.model.datasets[0].name if spec.model.datasets else first["name"],
+                "rowCount": first["row_count"], "columns": first["columns"],
+                "dimensionValues": catalog["dimensionValues"]}
+
+    rows = await list_visible(session, user, "data_source")
+    return list(await asyncio.gather(*(entry(asset, version) for asset, version, _owner, _access in rows)))
 
 
 class QueryIn(BaseModel):

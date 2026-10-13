@@ -23,14 +23,18 @@ sign in as one of the demo accounts:
 
 | Account | Role | Try |
 | --- | --- | --- |
-| Avery Admin | admin | Approvals queue, editing global cards and dashboards directly |
-| Riley Analyst | user | Edit a copy → propose changes, new data sources, sharing |
-| Jordan Analyst | user | A second analyst, to try sharing between users |
+| Avery Admin | admin | Approvals queue, conversations on requests, "Request changes", choosing the published version, card updates waiting on the global overview |
+| Morgan Admin | admin | A second reviewer: approvals that affect other open requests ("approving this also affects #3"), a version override (v5), a rejection after discussion |
+| Riley Analyst | user | Private copies numbered after their global version (2.2), a draft card (0.2), a request in review, a personal dashboard with a card update waiting, shared with Jordan |
+| Jordan Analyst | user | A request sent back with changes requested and a conflict to resolve (Resolve conflicts → Send back for review), unread messages, a rejected dashboard |
 
 What's included:
 
 - **Enterprise Spend Overview** — the demo dashboard on Postgres (60,000 card transactions).
 - **BigQuery Demo** — the same data in a bundled BigQuery emulator, queried through the BigQuery SQL dialect.
+- **Budget Planning** — an uploaded CSV (budget and forecast per sub-segment), and **Merchant Partners** — a REST API
+  source (the API's own `/demo/merchant-partners` endpoint). Every source type has example cards to start new cards from.
+- A walkthrough already played by the four accounts: copies, drafts, change requests in every state, shares.
 - The floating **dashboard assistant**, in offline mode (no model needed).
 - Data sources you can add yourself: CSV / Excel / JSON uploads, REST APIs, Postgres, BigQuery (emulator).
 
@@ -41,6 +45,7 @@ docker compose up --build -d     # run in the background
 docker compose logs -f api       # follow the API log (also: worker, web)
 docker compose down              # stop, keep data
 docker compose down -v           # stop and delete all demo data (fresh start next time)
+docker compose exec api python -m app.seed --reset   # same as npm run seed:reset (then: docker compose restart)
 PORT=9000 docker compose up      # use another port than 8080
 ```
 
@@ -78,9 +83,10 @@ Prerequisites: Docker, Node 20+, [uv](https://docs.astral.sh/uv/).
 npm run setup     # web deps + Python venv
 cp backend/.env.example backend/.env
 npm run dev       # postgres+redis in Docker, migrate, seed, API :8010, Celery worker + beat, web :5173 (auth :3001)
+npm run seed:reset  # any time: wipe and rebuild the demo data (deletes what you created while testing)
 ```
 
-Open http://localhost:5173 and pick an account: **Avery Admin** (admin) or **Riley / Jordan Analyst** (users).
+Open http://localhost:5173 and pick an account: **Avery / Morgan Admin** (admins) or **Riley / Jordan Analyst** (users).
 
 Full containerised stack instead: `docker compose up --build` → http://localhost:8080 (see *Try it* above).
 
@@ -92,11 +98,33 @@ Other scripts: `npm test` (backend tests), `npm run seed:reset` (rebuild demo da
 development and the BigQuery tests; set `BIGQUERY_EMULATOR_HOST=http://localhost:9050` to point BigQuery sources at it). Set `EXECUTION_MODE=inline` to run card queries inside the API
 process without a worker.
 
+### After pulling new changes
+
+New features sometimes need new database tables or columns, and a new demo story. If the app shows errors or the
+demo looks out of date after you pull, refresh your database:
+
+```bash
+npm run migrate        # add the new tables and columns — keeps your data
+npm run seed:reset     # wipe and rebuild the demo data — deletes anything you created while testing
+```
+
+Then restart `npm run dev` (the API and workers cache data by id, and a reset reuses ids).
+
+- **Brand-new setup:** nothing to do — `npm run dev` already migrates and seeds an empty database.
+- **Docker stack:** it migrates by itself on start-up but never wipes existing data. To get the new demo, start
+  fresh with `docker compose down -v` (deletes the Docker demo data), then `docker compose up --build`.
+- The demo story (Morgan, the conversations, Jordan's "changes requested" request) is only created on a database
+  with no change requests, which is why the reset is needed to see it.
+- If the BigQuery emulator stops (Docker may stop it when memory runs low), restart it with
+  `npm run infra:bigquery`, then run `npm run seed` to load its demo data again — it keeps data only in memory.
+
 ## How it works (current state)
 
 - **Assets & versions.** A card, dashboard or data source is an `asset` (owner, scope, lineage) plus immutable
   `asset_versions` holding a typed spec. Every save appends a version; a database trigger rejects edits to
-  existing versions.
+  existing versions. Versions read as **major.minor**: global versions are whole numbers (v3); a private copy of
+  global v3 saves 3.1, 3.2, … and continues from the new base after "Update from global"; a private asset that was
+  never published saves 0.1, 0.2, … Approval publishes the next whole version — the admin may pick a higher one.
 - **Pinning.** A dashboard version pins card versions, and a card version pins a data-source version — editing a
   card never silently changes a dashboard. Dashboards flag cards with a newer version ("Update").
 - **Scopes & permissions.** New assets are private to their creator. Global assets are read-only for users and
@@ -111,12 +139,27 @@ process without a worker.
   opens a change request; private cards and data sources the asset uses are bundled in automatically. Admins review
   in **Approvals** — per-item diffs against global, live card previews, approve or reject with a comment. Approval
   publishes in one transaction and rewrites references from private to the new global versions; the requester is
-  recorded as the author.
+  recorded as the author. Each request has a **conversation**: admins and the requester exchange messages without
+  deciding anything, with unread counts in the list and sidebar. **Request changes** sends a request back to the
+  requester but keeps it open; they update their copy and **Send back for review**. A global asset shows which open
+  requests would change it, and a request warns when approving it affects another open request on the same asset.
 - **Merging.** If global moved since the copy was made, changes merge three-way (per JSON path, per dashboard item,
-  per SQL line). Conflicts block approval until the requester runs **Update from global**, choosing a side per
-  conflict — the open request picks up the result automatically.
+  per SQL line). Conflicts block approval until the requester resolves them (**Resolve conflicts** on the request,
+  or **Update from global** on the copy), choosing "Keep mine" or "Take global" per conflict; a card's builder
+  settings follow its query's choice, and SQL conflicts show just the changed lines. The open request picks up the
+  result automatically, and the copy is renumbered after the global version it is now based on (e.g. 2.1).
 - **Card updates on dashboards.** When a pinned card has a newer version, the dashboard shows an "Update" chip and a
-  banner; **Update all** re-pins them as a new dashboard version.
+  banner. The chip (or the card's name in the banner) shows what changed and updates just that card; **Update all**
+  re-pins every one. Either way the result is a new dashboard version.
+- **Changing a card's data source.** While editing, "change" next to the source moves the card to another one. It
+  first says what carries over: builder cards keep the fields the new source also has (others reset); SQL cards keep
+  their SQL and must run successfully on the new source before saving. Dashboards keep the old version until updated.
+- **Deleting.** Delete first shows what it affects (dashboards or cards using it, people's copies, open requests).
+  Deleting hides the asset: everything already using it keeps working with its pinned version, marked "Deleted",
+  and can still be edited — it just can't be added anywhere new. Copies are kept and would be published as new
+  assets; open requests to change it can't be approved. Each list has a **Deleted** tab to restore (global: admins;
+  private: the owner).
+- **New cards** start by choosing a data source, then an example card on it (pre-filled, saved as your own) or a blank card.
 - **Data sources.** Onboard **Postgres** (queried in place, read-only), **BigQuery** (queried in place with typed
   parameters, a per-query bytes-billed cap, job timeouts; service-account key or — admins only — the server's Google
   identity), **REST APIs** (bearer / API-key / basic auth,

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     allow_private_network_sources: bool = False
     # Development/tests only: send every BigQuery source to an emulator (e.g. http://localhost:9050)
     bigquery_emulator_host: str | None = None
+    # Where workers reach this API's demo JSON endpoint (/demo/…) — the seeded REST data source
+    demo_api_base_url: str = "http://localhost:8010"
     rest_max_records: int = 100_000
     rest_max_response_mb: int = 20
 

@@ -1,5 +1,5 @@
 import type {
-  AssetKind, Card, CardData, ChangeRequestDetail, ChangeRequestSummary, Dashboard, DashboardDetail, Dataset,
+  AssetKind, AssetUsage, Card, CardData, ChangeRequestDetail, ChangeRequestSummary, Dashboard, DashboardDetail, Dataset,
   AppliedFilters, CardQuery, DashboardFilterDef, DataSource, DataSourceSpec, DirectoryEntry, RebasePreview, SemanticQuery,
   SourceTestResult, UploadResult, RequestStatus, Row, Scope, Share, VersionDetail, VersionDiff, VersionInfo,
 } from './types';
@@ -110,7 +110,7 @@ export const api = {
   query: (sql: string, dataSourceId: number) =>
     request<{ rows: Row[]; ms: number }>('/api/query', { method: 'POST', body: JSON.stringify({ sql, data_source_id: dataSourceId }) }),
 
-  cards: (scope?: Scope | 'shared') => request<Card[]>(`/api/cards${scope ? `?scope=${scope}` : ''}`),
+  cards: (scope?: Scope | 'shared' | 'deleted') => request<Card[]>(`/api/cards${scope ? `?scope=${scope}` : ''}`),
   card: (id: number | string) => request<Card>(`/api/cards/${id}`),
   /** Pass the dashboard + pinned version when rendering a dashboard item. */
   cardData: (id: number, filters?: Partial<AppliedFilters>, opts?: { versionId?: number; dashboardId?: number }) =>
@@ -119,7 +119,7 @@ export const api = {
   updateCard: (id: number | string, payload: CardPayload) => write(request<Card>(`/api/cards/${id}`, { method: 'PUT', body: JSON.stringify(payload) })),
   deleteCard: (id: number) => write(request<void>(`/api/cards/${id}`, { method: 'DELETE' })),
 
-  dashboards: (scope?: Scope | 'shared') => request<Dashboard[]>(`/api/dashboards${scope ? `?scope=${scope}` : ''}`),
+  dashboards: (scope?: Scope | 'shared' | 'deleted') => request<Dashboard[]>(`/api/dashboards${scope ? `?scope=${scope}` : ''}`),
   dashboard: (id: number | string) => request<DashboardDetail>(`/api/dashboards/${id}`),
   createDashboard: (payload: { name: string; description?: string }) =>
     write(request<Dashboard>('/api/dashboards', { method: 'POST', body: JSON.stringify(payload) })),
@@ -139,6 +139,10 @@ export const api = {
     write(request<{ user_id: number; permission: string }>(`/api/${kind}/${id}/shares/${userId}`, { method: 'PUT', body: JSON.stringify({ permission }) })),
   unshare: (kind: AssetKind, id: number, userId: number) =>
     write(request<void>(`/api/${kind}/${id}/shares/${userId}`, { method: 'DELETE' })),
+  /** What deleting would affect — shown before a delete is confirmed. */
+  usage: (kind: AssetKind, id: number) => request<AssetUsage>(`/api/${kind}/${id}/usage`),
+  undelete: (kind: AssetKind, id: number) => write(request<{ id: number }>(`/api/${kind}/${id}/undelete`, { method: 'POST' })),
+  remove: (kind: AssetKind, id: number) => write(request<void>(`/api/${kind}/${id}`, { method: 'DELETE' })),
   users: (q = '') => request<DirectoryEntry[]>(`/api/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
 
   // Filters
@@ -168,7 +172,7 @@ export const api = {
     }),
 
   // Data sources
-  dataSources: (scope?: Scope | 'shared') => request<DataSource[]>(`/api/data-sources${scope ? `?scope=${scope}` : ''}`),
+  dataSources: (scope?: Scope | 'shared' | 'deleted') => request<DataSource[]>(`/api/data-sources${scope ? `?scope=${scope}` : ''}`),
   dataSource: (id: number | string) => request<DataSource>(`/api/data-sources/${id}`),
   createDataSource: (payload: DataSourcePayload) =>
     write(request<DataSource>('/api/data-sources', { method: 'POST', body: JSON.stringify(payload) })),
@@ -194,13 +198,16 @@ export const api = {
   applyUpdates: (dashboardId: number, itemIds?: string[]) =>
     write(request<DashboardDetail>(`/api/dashboards/${dashboardId}/apply-updates`, { method: 'POST', body: JSON.stringify({ item_ids: itemIds ?? null }) })),
 
-  changeRequests: (status: RequestStatus | 'all' = 'all') => request<ChangeRequestSummary[]>(`/api/change-requests?status=${status}`),
-  changeRequestSummary: () => request<{ pending: number }>('/api/change-requests/summary'),
+  changeRequests: (status: RequestStatus | 'open' | 'all' = 'all') => request<ChangeRequestSummary[]>(`/api/change-requests?status=${status}`),
+  changeRequestSummary: () => request<{ pending: number; action_needed: number; unread: number }>('/api/change-requests/summary'),
+  commentOnRequest: (id: number, body: string) =>
+    write(request<ChangeRequestDetail>(`/api/change-requests/${id}/comments`, { method: 'POST', body: JSON.stringify({ body }) })),
   changeRequest: (id: number | string) => request<ChangeRequestDetail>(`/api/change-requests/${id}`),
   submitChangeRequest: (payload: { kind: AssetKind; asset_id: number; title: string; description?: string }) =>
     write(request<ChangeRequestDetail>('/api/change-requests', { method: 'POST', body: JSON.stringify(payload) })),
-  decideChangeRequest: (id: number, action: 'approve' | 'reject' | 'withdraw' | 'update', comment = '') =>
-    write(request<ChangeRequestDetail>(`/api/change-requests/${id}/${action}`, { method: 'POST', body: JSON.stringify({ comment }) })),
+  /** `versions` (approve only): item id → global version to publish it as, overriding the suggestion. */
+  decideChangeRequest: (id: number, action: 'approve' | 'reject' | 'withdraw' | 'update' | 'request-changes' | 'resubmit', comment = '', versions?: Record<number, number>) =>
+    write(request<ChangeRequestDetail>(`/api/change-requests/${id}/${action}`, { method: 'POST', body: JSON.stringify({ comment, ...(versions ? { versions } : {}) }) })),
   previewRequestItem: (id: number, itemId: number, filters?: Partial<AppliedFilters>) =>
     request<CardData & { chart_type: Card['chart_type']; config: Card['config'] }>(`/api/change-requests/${id}/items/${itemId}/data${filterParams(filters)}`),
 };

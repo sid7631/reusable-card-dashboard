@@ -34,6 +34,12 @@ function flatten(value: unknown, prefix = ''): [string, unknown][] {
   return [[prefix, value]];
 }
 
+/** A changed data source reads as its name rather than its id. */
+function showValue(change: SpecChange, value: unknown, labels: Record<string, string>): string {
+  if (change.path === 'spec.data_source.asset_id' && typeof value === 'number') return labels[`source:${value}`] ?? show(value);
+  return show(value);
+}
+
 function show(value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   if (typeof value === 'string') return value;
@@ -51,9 +57,16 @@ export default function DiffList({ diff }: { diff: VersionDiff }) {
   if (!diff.changes.length) {
     return <p className="rounded-xl bg-canvas px-4 py-6 text-center text-sm text-ink-faint">No differences.</p>;
   }
+  // A new data source always brings a new source version; that second line is noise
+  const sourceMoved = diff.changes.some((c) => c.path === 'spec.data_source.asset_id');
+  // …and a move to another source is the headline: it goes first
+  const changes = sourceMoved
+    ? [...diff.changes.filter((c) => c.path === 'spec.data_source.asset_id'),
+       ...diff.changes.filter((c) => !c.path.startsWith('spec.data_source.'))]
+    : diff.changes;
   return (
     <ul className="space-y-2.5">
-      {diff.changes.map((c) => {
+      {changes.map((c) => {
         const isItem = ITEM_PATH.test(c.path);
         const hideValues = isItem && (c.op !== 'changed' || c.path.endsWith('card.version_id'));
         return (
@@ -85,8 +98,8 @@ export default function DiffList({ diff }: { diff: VersionDiff }) {
               </dl>
             ) : !hideValues && (
               <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                {c.op !== 'added' && <><span className="font-semibold text-ink-faint">Before</span><span className="break-all font-mono text-negative">{show(c.before)}</span></>}
-                {c.op !== 'removed' && <><span className="font-semibold text-ink-faint">After</span><span className="break-all font-mono text-positive">{show(c.after)}</span></>}
+                {c.op !== 'added' && <><span className="font-semibold text-ink-faint">Before</span><span className="break-all font-mono text-negative">{showValue(c, c.before, diff.labels)}</span></>}
+                {c.op !== 'removed' && <><span className="font-semibold text-ink-faint">After</span><span className="break-all font-mono text-positive">{showValue(c, c.after, diff.labels)}</span></>}
               </div>
             )}
           </li>

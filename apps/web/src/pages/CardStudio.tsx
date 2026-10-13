@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { api } from '../lib/api';
 import { useCard, useDatasets } from '../lib/queries';
@@ -10,6 +10,8 @@ import ChartRenderer from '../components/ChartRenderer';
 import Modal from '../components/Modal';
 import VersionHistory from '../components/VersionHistory';
 import GovernanceBar from '../components/GovernanceBar';
+import SourceSwitchDialog from '../components/SourceSwitchDialog';
+import NotFound from '../components/NotFound';
 
 type Mode = 'builder' | 'sql' | 'copilot';
 
@@ -39,14 +41,23 @@ export default function CardStudio() {
   const { id } = useParams();
   const navigate = useNavigate();
   const editing = Boolean(id);
+  // New cards arrive from the source picker: ?source=<data source>[&from=<example card to start from>]
+  const [params] = useSearchParams();
+  const sourceParam = editing ? undefined : Number(params.get('source')) || undefined;
+  const fromParam = editing ? undefined : params.get('from') ?? undefined;
 
   const [mode, setMode] = useState<Mode>('builder');
   const [chartType, setChartType] = useState<ChartType>('bar');
+  // Older builder cards stored raw SQL. They open in the builder, but keep that SQL on save unless the
+  // query itself is changed — so restyling one doesn't show reviewers a rewritten query
+  const legacySql = useRef<string | null>(null);
+  const [queryTouched, setQueryTouched] = useState(false);
+  const chooseChartType = (t: ChartType) => { setChartType(t); setQueryTouched(true); };
   const [config, setConfig] = useState<CardConfig>({ dimension: 'industry', metric: 'amount', agg: 'SUM', filters: [] });
   // Raw SQL in SQL mode; the compiled semantic query (read-only) in builder / copilot modes
   const [sqlText, setSqlText] = useState('');
   const datasets = useDatasets().data ?? EMPTY_DATASETS;
-  const [sourceId, setSourceId] = useState<number>();
+  const [sourceId, setSourceId] = useState<number | undefined>(sourceParam);
   const dataset = datasets.find((d) => d.id === sourceId) ?? null;
 
   // Builder vocabulary comes from the source's semantic model: dimensions and measures by name
@@ -58,6 +69,8 @@ export default function CardStudio() {
     id: d.name, label: d.name === timeColumn ? `${d.label || d.name} (time series)` : d.label || d.name,
   }));
   const measures = (primary?.measures ?? []).map((m) => ({ id: m.name, label: m.label || m.name }));
+  // KPIs read in the measure's own format (a count isn't money); custom aggregates keep the default
+  const measureFormat = mode === 'sql' ? config.format : primary?.measures.find((m) => m.name === config.measure)?.format;
   const numericColumns_ = (dataset?.columns ?? []).filter((c) => /int|numeric|decimal|double|real|float/i.test(c.type)).map((c) => c.name);
   const semanticKey = primary && dataset ? JSON.stringify({ source: dataset.id, query: toSemanticQuery(chartType, config, primary.name, timeColumn) }) : '';
 
@@ -82,15 +95,23 @@ export default function CardStudio() {
   // Global cards are read-only for non-admins (fork + propose arrives with the approval flow)
   const cardQuery = useCard(id, { editor: true });
   const card = cardQuery.data;
+  const templateQuery = useCard(fromParam, { editor: true });
   const canEdit = card?.can_edit ?? true;
-  const versionNo = card?.version_no;
+  const versionLabel = card?.version;
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [switchOpen, setSwitchOpen] = useState(false);
+  // SQL cards moved to another source must run successfully there before they can be saved
+  const [needsPreview, setNeedsPreview] = useState(false);
+  // Editing a card whose source is gone (deleted, or access removed): it must move to another source
+  const sourceMissing = editing && Boolean(card) && datasets.length > 0 && !datasets.some((d) => d.id === card!.data_source_id)
+    && sourceId === card!.data_source_id;
+  const movedFrom = editing && card && sourceId !== undefined && sourceId !== card.data_source_id
+    ? datasets.find((d) => d.id === card.data_source_id)?.label ?? 'its old source' : null;
 
   useEffect(() => {
     setSourceId((cur) => cur ?? datasets.find((x) => !x.error)?.id);
   }, [datasets]);
 
-  const chooseSource = (id: number) => setSourceId(id);
 
   // Keep builder choices valid for the selected source: anything the source doesn't have falls back
   // to its first dimension / numeric column (new cards, or switching source)
@@ -117,13 +138,17 @@ export default function CardStudio() {
   // Fill the form from the card — once per version, so a refetch never overwrites edits in progress
   // (a restore or an update from global creates a new version and refills it)
   const seeded = useRef<string>();
-  useEffect(() => { if (cardQuery.isError) navigate('/cards'); }, [cardQuery.isError, navigate]);
   useEffect(() => {
-    const c = cardQuery.data;
+    // Editing: the card itself. New from an example: the example, saved as a new card of your own
+    const c = cardQuery.data ?? templateQuery.data;
     if (!c || seeded.current === `${c.id}:${c.version_no}`) return;
     seeded.current = `${c.id}:${c.version_no}`;
+    const fromExample = !editing;
     {
       // Older builder cards stored SQL; they open in the builder and save back as semantic queries
+      // once a query setting changes (see legacySql)
+      legacySql.current = c.query.mode === 'sql' && c.created_via === 'builder' ? c.sql_text : null;
+      setQueryTouched(false);
       setMode(c.query.mode === 'sql' && c.created_via !== 'builder' ? 'sql' : c.created_via === 'sql' ? 'sql' : c.created_via);
       setChartType(c.chart_type);
       const controls = c.config.controls;
@@ -133,11 +158,11 @@ export default function CardStudio() {
         ...(controls?.segment && !controls.filters ? { controls: { ...controls, segment: undefined, filters: ['segment', 'sub_segment'] } } : {}),
       });
       setSqlText(c.sql_text);
-      setName(c.name);
+      setName(fromExample ? `${c.name} (copy)` : c.name);
       setDescription(c.description);
       setSourceId(c.data_source_id);
     }
-  }, [cardQuery.data]);
+  }, [cardQuery.data, templateQuery.data, editing]);
 
   const dataSourceId = dataset?.id;
   const runPreview = useCallback(async (sql: string) => {
@@ -148,6 +173,7 @@ export default function CardStudio() {
       const res = await api.query(sql, dataSourceId);
       setRows(res.rows);
       setQueryMs(res.ms);
+      setNeedsPreview(false);
     } catch (e) {
       setQueryError((e as Error).message);
       setRows([]);
@@ -185,7 +211,11 @@ export default function CardStudio() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, thinking]);
 
-  const updateConfig = (patch: Partial<CardConfig>) => setConfig((c) => ({ ...c, ...patch }));
+  const QUERY_KEYS: (keyof CardConfig)[] = ['dimension', 'dimension2', 'measure', 'metric', 'agg', 'limit', 'filters', 'timeGrain'];
+  const updateConfig = (patch: Partial<CardConfig>) => {
+    if (QUERY_KEYS.some((k) => k in patch)) setQueryTouched(true);
+    setConfig((c) => ({ ...c, ...patch }));
+  };
 
   const updateFilter = (idx: number, patch: Partial<CardFilter>) => {
     const filters = [...(config.filters ?? [])];
@@ -205,6 +235,7 @@ export default function CardStudio() {
       setThinking(false);
       if (result.config && result.chartType) {
         setChartType(result.chartType);
+        setQueryTouched(true);
         // The mock copilot speaks the demo vocabulary; the validity check maps it onto the source's model
         setConfig({ metric: 'amount', agg: 'SUM' as const, filters: [], ...result.config, measure: undefined });
         if (result.suggestedName && !name) setName(result.suggestedName);
@@ -223,8 +254,12 @@ export default function CardStudio() {
       chart_type: chartType,
       data_source_id: dataset.id,
       // The editor keeps an empty filter list for convenience; don't store it as a change
-      config: config.filters?.length ? config : (({ filters: _unused, ...rest }) => rest)(config),
-      ...(mode === 'sql' ? { sql_text: sqlText } : { query: toSemanticQuery(chartType, config, primary?.name ?? dataset.name, timeColumn) }),
+      config: (({ filters, format: _format, ...rest }) => ({
+        ...rest, ...(filters?.length ? { filters } : {}), ...(measureFormat ? { format: measureFormat } : {}),
+      }))(config),
+      ...(mode === 'sql' ? { sql_text: sqlText }
+        : legacySql.current !== null && !queryTouched ? { sql_text: legacySql.current }
+          : { query: toSemanticQuery(chartType, config, primary?.name ?? dataset.name, timeColumn) }),
       created_via: mode,
       change_note: changeNote,
     };
@@ -353,6 +388,8 @@ export default function CardStudio() {
     </div>
   );
 
+  if (cardQuery.isError) return <NotFound noun="card" back="/cards" backLabel="Back to the card library" detail={cardQuery.error.message} />;
+
   return (
     <div className="flex h-screen flex-col">
       {/* Studio header */}
@@ -364,16 +401,17 @@ export default function CardStudio() {
           <div>
             <h1 className="font-display text-xl font-extrabold tracking-tight text-ink">
               {editing ? `${canEdit ? 'Edit card' : 'Card'}${name ? ` — ${name}` : ''}` : 'New card'}
-              {versionNo !== undefined && <span className="ml-2 align-middle font-mono text-xs font-medium text-ink-faint">v{versionNo}</span>}
+              {versionLabel !== undefined && <span className="ml-2 align-middle font-mono text-xs font-medium text-ink-faint">v{versionLabel}</span>}
             </h1>
             <p className="text-xs text-ink-soft">
               Source:{' '}
-              {!editing && datasets.length > 1 ? (
-                <select value={sourceId ?? ''} onChange={(e) => chooseSource(Number(e.target.value))} aria-label="Data source"
-                  className="rounded-md border border-line bg-white px-1.5 py-0.5 text-xs font-semibold text-ink outline-none focus:border-accent">
-                  {datasets.map((d) => <option key={d.id} value={d.id} disabled={Boolean(d.error)}>{d.label}{d.error ? ' (unavailable)' : ''}</option>)}
-                </select>
-              ) : <span className="font-semibold">{dataset?.label ?? '…'}</span>}
+              <span className="font-semibold">{sourceMissing ? 'deleted' : dataset?.label ?? '…'}</span>
+              {movedFrom && <span className="text-amber-700"> (moved from {movedFrom} — not saved yet)</span>}
+              {!editing && <Link to="/cards/new" className="ml-1 font-semibold text-accent hover:underline">change</Link>}
+              {editing && canEdit && (
+                <button onClick={() => setSwitchOpen(true)} className="ml-1 font-semibold text-accent hover:underline">change</button>
+              )}
+              {templateQuery.data && <> · starting from “{templateQuery.data.name}”</>}
               {' '}· <span className="font-mono">{dataset?.name ?? '…'}</span>
               {dataset ? ` · ${dataset.rowCount.toLocaleString()} rows · ${{ postgres: 'Postgres', bigquery: 'BigQuery', rest: 'REST extract', file: 'File extract' }[dataset.type]}` : ''}
             </p>
@@ -389,7 +427,8 @@ export default function CardStudio() {
             History
           </button>
         )}
-        <button onClick={() => setSaveOpen(true)} disabled={!canEdit || !dataset || (!rows.length && chartType !== 'kpi')}
+        <button onClick={() => setSaveOpen(true)} disabled={!canEdit || !dataset || (needsPreview && mode === 'sql') || (!rows.length && chartType !== 'kpi')}
+          title={needsPreview && mode === 'sql' ? 'Run the SQL preview on the new source first' : undefined}
           className="rounded-xl bg-accent px-5 py-2.5 font-display text-sm font-semibold text-white shadow-sm transition enabled:hover:bg-accent-deep disabled:opacity-40">
           {editing ? 'Save new version' : 'Save card'}
         </button>
@@ -419,7 +458,7 @@ export default function CardStudio() {
                 <span className={label}>Chart type</span>
                 <div className="flex flex-wrap gap-1.5">
                   {CHART_TYPES.map((t) => (
-                    <button key={t.id} onClick={() => setChartType(t.id)}
+                    <button key={t.id} onClick={() => chooseChartType(t.id)}
                       className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                         chartType === t.id ? 'border-accent bg-accent text-white' : 'border-line bg-white text-ink-soft hover:border-accent/50'
                       }`}>
@@ -666,7 +705,7 @@ export default function CardStudio() {
                 <div className="size-6 animate-spin rounded-full border-2 border-line border-t-accent" />
               </div>
             ) : (
-              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} xKey={config.xKey} yKeys={config.yKeys} rank={config.rank} scheme={config.scheme} />
+              <ChartRenderer chartType={chartType} data={{ rows, meta: {} }} xKey={config.xKey} yKeys={config.yKeys} rank={config.rank} scheme={config.scheme} format={measureFormat} />
             )}
           </div>
           {rows.length > 0 && chartType !== 'table' && (
@@ -677,13 +716,36 @@ export default function CardStudio() {
         </div>
       </div>
 
+      {sourceMissing && (
+        <div className="fixed inset-x-0 bottom-6 z-30 mx-auto w-fit max-w-xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+          <span className="font-semibold">This card's data source was deleted</span> (or you no longer have access). Dashboards keep
+          showing it, but to save changes, move it to another source.{' '}
+          {canEdit && <button onClick={() => setSwitchOpen(true)} className="font-semibold underline">Choose a source</button>}
+        </div>
+      )}
+      {switchOpen && (
+        <SourceSwitchDialog currentId={sourceId} mode={mode} config={config}
+          // A global card can only use global sources
+          datasets={card?.scope === 'global' ? datasets.filter((d) => d.scope === 'global') : datasets}
+          onClose={() => setSwitchOpen(false)}
+          onSwitch={(newId, newConfig) => {
+            setSourceId(newId);
+            setConfig(newConfig);
+            setRows([]);
+            setQueryError(undefined);
+            setQueryMs(null);
+            setNeedsPreview(mode === 'sql');
+            setQueryTouched(true);
+            setSwitchOpen(false);
+          }} />
+      )}
       {historyOpen && id && (
         <VersionHistory kind="cards" assetId={Number(id)} assetName={name} canEdit={canEdit}
           onClose={() => setHistoryOpen(false)} />
       )}
 
       {saveOpen && (
-        <Modal title={editing ? `Save as v${(versionNo ?? 0) + 1}` : 'Save card to your library'}
+        <Modal title={editing ? 'Save a new version' : 'Save card to your library'}
           subtitle={editing ? 'Earlier versions are kept — dashboards stay on the version they pinned.' : 'New cards are private to you. The card stores its SQL + data-source mapping, so any dashboard can reuse it.'}
           onClose={() => setSaveOpen(false)}>
           <form onSubmit={save} className="space-y-4">

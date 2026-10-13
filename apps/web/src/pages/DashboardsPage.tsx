@@ -5,9 +5,10 @@ import { useDashboards } from '../lib/queries';
 import type { Dashboard } from '../lib/types';
 import Modal from '../components/Modal';
 import AssetBadges from '../components/AssetBadges';
+import DeleteDialog, { DeletedList } from '../components/DeleteDialog';
 
-type Tab = 'all' | 'global' | 'private' | 'shared';
-const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global library'], ['private', 'My dashboards'], ['shared', 'Shared with me']];
+type Tab = 'all' | 'global' | 'private' | 'shared' | 'deleted';
+const TABS: [Tab, string][] = [['all', 'All'], ['global', 'Global library'], ['private', 'My dashboards'], ['shared', 'Shared with me'], ['deleted', 'Deleted']];
 
 export default function DashboardsPage() {
   const [creating, setCreating] = useState(false);
@@ -24,10 +25,7 @@ export default function DashboardsPage() {
     navigate(`/dashboards/${d.id}`);
   };
 
-  const remove = async (d: Dashboard) => {
-    if (!confirm(`Delete dashboard “${d.name}”? Cards stay in the library.`)) return;
-    await api.deleteDashboard(d.id);
-  };
+  const [deleting, setDeleting] = useState<Dashboard | null>(null);
 
   return (
     <div className="px-10 py-8">
@@ -54,6 +52,7 @@ export default function DashboardsPage() {
         ))}
       </div>
 
+      {tab === 'deleted' ? <DeletedList kind="dashboards" items={dashboards} /> : (
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
         {dashboards?.map((d, i) => (
           <Link
@@ -73,7 +72,7 @@ export default function DashboardsPage() {
                 {d.card_count ?? 0} card{(d.card_count ?? 0) === 1 ? '' : 's'}
               </span>
               {(d.access === 'owner' || d.access === 'admin') && <button
-                onClick={(e) => { e.preventDefault(); remove(d); }}
+                onClick={(e) => { e.preventDefault(); setDeleting(d); }}
                 className="rounded-lg p-1.5 text-ink-faint opacity-0 transition hover:bg-negative/10 hover:text-negative group-hover:opacity-100"
                 aria-label="Delete dashboard"
               >
@@ -89,7 +88,9 @@ export default function DashboardsPage() {
           </div>
         )}
       </div>
+      )}
 
+      {deleting && <DeleteDialog kind="dashboards" asset={deleting} onClose={() => setDeleting(null)} />}
       {creating && (
         <Modal title="New dashboard" subtitle="Give it a name — you'll add cards next." onClose={() => setCreating(false)}>
           <form onSubmit={create} className="space-y-4">

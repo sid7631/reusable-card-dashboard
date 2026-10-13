@@ -6,8 +6,10 @@ import { timeAgo } from '../lib/format';
 import type { RequestStatus } from '../lib/types';
 import RequestStatusChip from '../components/RequestStatus';
 
-const TABS: [RequestStatus | 'all', string][] = [
-  ['pending', 'In review'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['withdrawn', 'Withdrawn'], ['all', 'All'],
+type Tab = RequestStatus | 'open' | 'all';
+const TABS: [Tab, string][] = [
+  ['pending', 'In review'], ['changes_requested', 'Changes requested'], ['approved', 'Approved'], ['rejected', 'Rejected'],
+  ['withdrawn', 'Withdrawn'], ['all', 'All'],
 ];
 const KIND_LABEL = { card: 'Card', dashboard: 'Dashboard', data_source: 'Data source' } as const;
 
@@ -15,7 +17,9 @@ const KIND_LABEL = { card: 'Card', dashboard: 'Dashboard', data_source: 'Data so
 export default function RequestsPage() {
   const { user } = useAuth();
   const admin = user.role === 'admin';
-  const [tab, setTab] = useState<RequestStatus | 'all'>('pending');
+  // Admins land on the review queue; requesters on everything still open (in review or back with them)
+  const [tab, setTab] = useState<Tab>(admin ? 'pending' : 'open');
+  const tabs: [Tab, string][] = admin ? TABS : [['open', 'Open'], ...TABS];
   const { data: requests } = useChangeRequests(tab);
 
   return (
@@ -30,7 +34,7 @@ export default function RequestsPage() {
       </div>
 
       <div className="mb-6 flex gap-1 border-b border-line">
-        {TABS.map(([id, text]) => (
+        {tabs.map(([id, text]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`relative px-3.5 py-2.5 font-display text-sm font-semibold transition ${tab === id ? 'text-accent' : 'text-ink-soft hover:text-ink'}`}>
             {text}
@@ -52,13 +56,18 @@ export default function RequestsPage() {
                 {admin && ` · by ${r.requested_by_name}`}
               </p>
             </div>
+            {Boolean(r.unread) && (
+              <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-white" title="New messages since you last opened it">
+                {r.unread} new message{r.unread === 1 ? '' : 's'}
+              </span>
+            )}
             <span className="shrink-0 text-xs text-ink-faint" title={new Date(r.created_at).toLocaleString()}>{timeAgo(r.created_at)}</span>
             <RequestStatusChip status={r.status} />
           </Link>
         ))}
         {requests && !requests.length && (
           <p className="px-5 py-12 text-center text-sm text-ink-faint">
-            {tab === 'pending' ? (admin ? 'Nothing waiting for review.' : 'You have nothing in review.') : 'No requests.'}
+            {tab === 'pending' ? (admin ? 'Nothing waiting for review.' : 'You have nothing in review.') : tab === 'open' ? 'You have no open requests.' : 'No requests.'}
           </p>
         )}
         {!requests && <div className="flex justify-center py-12"><div className="size-5 animate-spin rounded-full border-2 border-line border-t-accent" /></div>}

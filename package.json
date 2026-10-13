@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "setup": "npm install --prefix apps/web && cd backend && uv sync",
-    "infra": "docker compose -f infra/docker-compose.yml up -d postgres redis",
+    "infra": "docker compose -f infra/docker-compose.yml --profile bigquery up -d postgres redis bigquery",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "migrate": "cd backend && uv run alembic upgrade head",
     "seed": "cd backend && uv run python -m app.seed",

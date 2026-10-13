@@ -201,3 +201,91 @@ async def test_legacy_specs_are_served_in_the_current_shape(user, seeded):
     demo_id = next(s["id"] for s in (await user.get("/api/data-sources")).json() if s["name"] == "Demo Warehouse")
     demo = (await user.get(f"/api/data-sources/{demo_id}")).json()
     assert demo["spec"]["model"]["datasets"][0]["name"] == "transactions"
+
+
+async def test_viewers_can_test_a_saved_source_as_it_is(user, other_user, seeded):
+    """An analyst opening a global source sees its connection status; edits they send are ignored, so the
+    stored credential can't be pointed elsewhere. Strangers still can't test someone's private source."""
+    source = (await user.get(f"/api/data-sources/{seeded['source_id']}")).json()
+    ok = await user.post("/api/data-sources/test", {"spec": source["spec"], "data_source_id": seeded["source_id"]})
+    assert ok.status_code == 200, ok.text
+    assert "transactions" in {t["name"] for t in ok.json()["tables"]}
+
+    redirected = {**source["spec"], "connection": {**source["spec"]["connection"], "host": "attacker.example.com"}}
+    still_saved = await user.post("/api/data-sources/test", {"spec": redirected, "data_source_id": seeded["source_id"]})
+    assert still_saved.status_code == 200 and "transactions" in {t["name"] for t in still_saved.json()["tables"]}
+
+    mine = (await user.post(f"/api/data-sources/{seeded['source_id']}/fork")).json()   # a private copy
+    assert (await other_user.post("/api/data-sources/test", {"spec": source["spec"], "data_source_id": mine["id"]})).status_code == 404
+
+
+async def test_true_false_columns_filter_with_the_values_offered(user):
+    csv = b"campaign,channel,is_active,spend\nA,Email,true,10\nB,Email,false,20\nC,Search,false,30\n"
+    source = await upload_source(user, "flags.csv", csv, "Flags")
+    query = {"mode": "semantic", "dataset": "flags", "measures": [{"name": "total_spend"}], "dimensions": [], "filters": []}
+    card = (await user.post("/api/cards", {"name": "Spend", "chart_type": "kpi", "data_source_id": source["id"],
+                                           "query": query, "config": {}})).json()
+
+    offered = (await user.get(f"/api/cards/{card['id']}/filter-options", params={"dimension": "is_active"})).json()["values"]
+    assert offered == ["false", "true"]
+    for value, total in (("false", 50), ("False", 50), ("TRUE", 10)):
+        # as a dashboard / on-card filter …
+        res = (await user.get(f"/api/cards/{card['id']}/data", params={"filters": json.dumps({"is_active": [value]})})).json()
+        assert res["rows"][0]["value"] == total, value
+        # … and as the card's own filter
+        own = {**query, "filters": [{"dimension": "is_active", "values": [value]}]}
+        res = (await user.post("/api/semantic/query", {"data_source_id": source["id"], "query": own})).json()
+        assert res["rows"][0]["value"] == total, value
+
+
+async def test_a_slow_source_does_not_hold_up_the_source_list(user, seeded, monkeypatch):
+    """A source that takes long to read comes back as `loading` within the wait limit, keeps building,
+    and is complete on a later call — the other sources aren't held up."""
+    import asyncio
+    import time
+    from app.api import data_sources as ds
+
+    real = ds._catalog
+
+    async def slow(version_id, raw_spec):
+        await asyncio.sleep(1.0)
+        return await real(version_id, raw_spec)
+
+    monkeypatch.setattr(ds, "_catalog", slow)
+    monkeypatch.setattr(ds, "CATALOG_WAIT_S", 0.2)
+    ds._catalog_cache.clear()
+    started = time.perf_counter()
+    first = (await user.get("/api/datasets")).json()
+    assert time.perf_counter() - started < 0.9          # sources read side by side, each waited on ≤ 0.2 s
+    assert first and all(d.get("loading") for d in first)
+    # The builds carry on after the request stopped waiting: a later call finds the warehouse complete
+    # (other tests leave many sources on the same warehouse behind, so give it a few seconds)
+    for _ in range(50):
+        await asyncio.sleep(0.2)
+        warehouse = next(d for d in (await user.get("/api/datasets")).json() if d["id"] == seeded["source_id"])
+        if not warehouse.get("loading"):
+            break
+    assert not warehouse.get("loading") and warehouse["tables"]
+
+
+async def test_kpi_year_on_year_works_when_last_year_was_negative(user):
+    csv = b"day,variance\n2025-03-01,-10\n2026-03-01,-5\n"
+    source = await upload_source(user, "variance.csv", csv, "Variance")
+    query = {"mode": "semantic", "dataset": "variance", "measures": [{"name": "total_variance"}], "dimensions": [], "filters": []}
+    card = (await user.post("/api/cards", {"name": "Variance", "chart_type": "kpi", "data_source_id": source["id"],
+                                           "query": query, "config": {}})).json()
+    meta = (await user.get(f"/api/cards/{card['id']}/data", params={"from": "2026-01-01", "to": "2026-06-30"})).json()["meta"]
+    assert meta["prevValue"] == -10 and meta["deltaAbs"] == 5 and meta["deltaPct"] == 50
+
+
+async def test_seed_skips_bigquery_on_any_emulator_error(monkeypatch, capsys):
+    """An emulator that errors mid-load (not just one that isn't running) must not stop the whole seed."""
+    from app.seed import __main__ as seed
+
+    def broken(_host):
+        raise ValueError("json: string unexpected end of JSON input")
+
+    monkeypatch.setattr(seed.get_settings(), "bigquery_emulator_host", "http://localhost:1", raising=False)
+    monkeypatch.setattr(seed, "_load_bigquery_emulator", broken)
+    await seed.seed_bigquery_demo()                     # returns instead of raising
+    assert "BigQuery demo: skipped" in capsys.readouterr().out

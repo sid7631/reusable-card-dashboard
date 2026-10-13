@@ -96,20 +96,27 @@ class Bound:
         return " ".join(self.sql)
 
 
+def normalise_values(dimension_type: str, values) -> list[str]:
+    """Filters compare the column as text, where true/false columns read lowercase in every dialect —
+    accept "True"/"FALSE" too (older saved filters, typed values)."""
+    return [str(v).lower() for v in values] if dimension_type == "boolean" else list(values)
+
+
 def bind(filters: Filters, dataset: SemanticDataset | None, dialect: str, *, offset: int = 0,
          static: dict[str, tuple[str, ...]] | None = None) -> Bound:
     """Conditions for `dataset`. `static` filters are part of the card's own definition."""
     out = Bound(dialect)
     columns = {d.name: d.column for d in dataset.dimensions} if dataset else {}
+    types = {d.name: d.type for d in dataset.dimensions} if dataset else {}
 
     for name, values in (static or {}).items():
         if name not in columns:
             raise FilterError(f"Unknown dimension “{name}”.")
-        out.sql.append(f"AND {membership(quote(columns[name], dialect), out.param(list(values), offset), dialect)}")
+        out.sql.append(f"AND {membership(quote(columns[name], dialect), out.param(normalise_values(types[name], values), offset), dialect)}")
 
     for name, values in filters.dims.items():
         if name in columns:
-            out.sql.append(f"AND {membership(quote(columns[name], dialect), out.param(list(values), offset), dialect)}")
+            out.sql.append(f"AND {membership(quote(columns[name], dialect), out.param(normalise_values(types[name], values), offset), dialect)}")
             out.applied.append(name)
         else:
             out.ignored.append(name)

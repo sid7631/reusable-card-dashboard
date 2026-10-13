@@ -23,6 +23,7 @@ const TOKEN_TTL_S = 60 * 60;
 // The IdP's user directory (stand-in for SSO accounts)
 const USERS = [
   { id: 'u-avery', name: 'Avery Admin', email: 'avery@spendboard.local', roles: ['admin'], title: 'Platform admin' },
+  { id: 'u-morgan', name: 'Morgan Admin', email: 'morgan@spendboard.local', roles: ['admin'], title: 'Data governance lead' },
   { id: 'u-riley', name: 'Riley Analyst', email: 'riley@spendboard.local', roles: ['user'], title: 'Spend analyst' },
   { id: 'u-jordan', name: 'Jordan Analyst', email: 'jordan@spendboard.local', roles: ['user'], title: 'Finance analyst' },
 ];

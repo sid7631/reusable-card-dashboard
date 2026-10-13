@@ -1,0 +1,361 @@
+survey_month,product,country,channel,responses,nps_score,csat_pct,complaints
+2025-01-01,Platinum,Canada,App,586,61.1,0.871,16
+2025-01-01,Platinum,India,Web,1038,36.6,0.824,6
+2025-01-01,Platinum,Germany,Web,736,36.5,0.886,14
+2025-01-01,Platinum,Japan,Phone,1030,38.1,0.78,30
+2025-01-01,Gold,Australia,Web,821,66.2,0.75,17
+2025-01-01,Gold,UK,Phone,328,39.2,0.849,8
+2025-01-01,Gold,Canada,App,1246,62.0,0.818,9
+2025-01-01,Gold,US,Phone,1347,31.6,0.862,36
+2025-01-01,Green,Germany,Phone,538,37.0,0.831,7
+2025-01-01,Green,India,Phone,502,54.0,0.755,9
+2025-01-01,Green,Japan,Phone,710,50.9,0.888,9
+2025-01-01,Green,UK,App,373,49.9,0.906,7
+2025-01-01,Business Platinum,India,App,870,64.7,0.892,25
+2025-01-01,Business Platinum,Canada,Phone,325,42.4,0.853,3
+2025-01-01,Business Platinum,Japan,Web,605,43.7,0.78,17
+2025-01-01,Business Platinum,Germany,Web,441,31.5,0.729,8
+2025-01-01,Corporate Card,Japan,Web,272,29.9,0.901,1
+2025-01-01,Corporate Card,Australia,App,1293,61.5,0.883,11
+2025-01-01,Corporate Card,Canada,Web,727,39.2,0.895,14
+2025-01-01,Corporate Card,US,App,843,31.2,0.808,10
+2025-02-01,Platinum,Germany,Phone,639,53.7,0.79,15
+2025-02-01,Platinum,Japan,Phone,1371,23.7,0.838,31
+2025-02-01,Platinum,US,Phone,1322,52.2,0.717,29
+2025-02-01,Platinum,UK,Web,1305,67.6,0.813,5
+2025-02-01,Gold,Japan,App,117,70.9,0.793,2
+2025-02-01,Gold,India,App,1383,45.1,0.903,26
+2025-02-01,Gold,Canada,Web,894,66.8,0.868,13
+2025-02-01,Gold,Germany,Web,421,56.0,0.839,11
+2025-02-01,Green,Germany,Web,1341,40.2,0.822,30
+2025-02-01,Green,Japan,Phone,1214,49.7,0.906,35
+2025-02-01,Green,Australia,Phone,203,34.9,0.777,5
+2025-02-01,Green,Canada,Web,521,55.1,0.829,8
+2025-02-01,Business Platinum,Canada,App,930,46.0,0.808,3
+2025-02-01,Business Platinum,UK,Phone,660,54.5,0.874,6
+2025-02-01,Business Platinum,Japan,Web,1330,53.2,0.92,7
+2025-02-01,Business Platinum,India,App,1304,57.2,0.891,31
+2025-02-01,Corporate Card,UK,Phone,148,37.2,0.776,3
+2025-02-01,Corporate Card,India,Web,1021,56.9,0.794,6
+2025-02-01,Corporate Card,Canada,Phone,880,22.1,0.725,22
+2025-02-01,Corporate Card,Germany,Phone,104,32.0,0.812,1
+2025-03-01,Platinum,India,Web,1101,57.7,0.796,25
+2025-03-01,Platinum,Germany,App,83,33.5,0.912,0
+2025-03-01,Platinum,Australia,Web,564,44.7,0.819,6
+2025-03-01,Platinum,UK,App,203,62.2,0.864,2
+2025-03-01,Gold,Australia,App,327,36.9,0.846,2
+2025-03-01,Gold,Canada,Phone,644,38.3,0.873,8
+2025-03-01,Gold,Germany,Phone,682,26.7,0.954,4
+2025-03-01,Gold,India,Phone,1254,33.2,0.776,18
+2025-03-01,Green,Canada,Phone,839,39.2,0.779,7
+2025-03-01,Green,India,Web,881,45.1,0.719,4
+2025-03-01,Green,Japan,Phone,503,26.0,0.811,6
+2025-03-01,Green,Germany,Phone,147,34.7,0.837,4
+2025-03-01,Business Platinum,Australia,App,1290,52.6,0.956,38
+2025-03-01,Business Platinum,India,Phone,233,42.5,0.856,6
+2025-03-01,Business Platinum,Japan,Web,654,29.1,0.896,12
+2025-03-01,Business Platinum,UK,Web,1068,56.0,0.847,31
+2025-03-01,Corporate Card,Australia,Phone,167,53.6,0.953,2
+2025-03-01,Corporate Card,Canada,App,158,44.1,0.752,2
+2025-03-01,Corporate Card,Japan,Web,694,39.5,0.725,11
+2025-03-01,Corporate Card,US,App,1316,59.3,0.89,21
+2025-04-01,Platinum,US,App,442,43.2,0.877,1
+2025-04-01,Platinum,Germany,Web,102,37.3,0.926,1
+2025-04-01,Platinum,Japan,Web,302,65.5,0.743,4
+2025-04-01,Platinum,India,App,739,29.6,0.886,15
+2025-04-01,Gold,UK,App,112,37.4,0.924,1
+2025-04-01,Gold,US,Web,1218,45.1,0.78,33
+2025-04-01,Gold,Germany,Phone,652,65.7,0.911,11
+2025-04-01,Gold,Australia,Phone,722,21.5,0.835,20
+2025-04-01,Green,India,App,192,39.9,0.845,5
+2025-04-01,Green,Japan,Phone,1035,30.5,0.768,26
+2025-04-01,Green,UK,App,88,32.7,0.817,0
+2025-04-01,Green,Germany,App,1089,29.1,0.933,9
+2025-04-01,Business Platinum,Australia,Web,568,44.1,0.875,12
+2025-04-01,Business Platinum,Germany,App,1261,42.5,0.885,26
+2025-04-01,Business Platinum,Canada,Web,1266,60.2,0.798,8
+2025-04-01,Business Platinum,US,Web,544,53.0,0.751,6
+2025-04-01,Corporate Card,India,App,344,20.9,0.919,3
+2025-04-01,Corporate Card,Japan,App,987,44.0,0.897,19
+2025-04-01,Corporate Card,Germany,App,665,31.3,0.93,5
+2025-04-01,Corporate Card,Canada,App,813,57.2,0.92,16
+2025-05-01,Platinum,Germany,App,414,47.7,0.775,6
+2025-05-01,Platinum,India,Web,213,31.2,0.794,4
+2025-05-01,Platinum,UK,App,260,48.3,0.783,1
+2025-05-01,Platinum,Canada,App,923,27.9,0.894,18
+2025-05-01,Gold,India,Web,223,33.6,0.842,1
+2025-05-01,Gold,Canada,Web,1124,66.8,0.804,32
+2025-05-01,Gold,Germany,App,164,68.7,0.852,1
+2025-05-01,Gold,UK,Web,1088,27.9,0.721,32
+2025-05-01,Green,Canada,Phone,1205,24.1,0.73,26
+2025-05-01,Green,India,App,1234,56.5,0.9,27
+2025-05-01,Green,Japan,App,1187,71.8,0.937,20
+2025-05-01,Green,Australia,Web,1115,24.1,0.9,13
+2025-05-01,Business Platinum,Germany,App,823,57.6,0.884,19
+2025-05-01,Business Platinum,UK,App,378,62.6,0.772,3
+2025-05-01,Business Platinum,India,Phone,1346,23.0,0.863,10
+2025-05-01,Business Platinum,Canada,App,384,52.8,0.773,1
+2025-05-01,Corporate Card,Japan,Phone,107,23.6,0.945,3
+2025-05-01,Corporate Card,Australia,App,1050,58.6,0.949,9
+2025-05-01,Corporate Card,Germany,App,1316,40.9,0.834,16
+2025-05-01,Corporate Card,US,Web,1354,66.0,0.96,18
+2025-06-01,Platinum,UK,Phone,485,46.1,0.898,6
+2025-06-01,Platinum,US,Web,689,64.6,0.886,20
+2025-06-01,Platinum,Germany,Web,866,60.2,0.785,19
+2025-06-01,Platinum,Canada,Phone,512,63.2,0.751,11
+2025-06-01,Gold,US,App,976,65.8,0.938,15
+2025-06-01,Gold,Canada,App,204,23.1,0.711,0
+2025-06-01,Gold,Germany,Web,900,54.6,0.928,25
+2025-06-01,Gold,UK,App,573,23.4,0.956,7
+2025-06-01,Green,UK,Web,1043,19.3,0.777,29
+2025-06-01,Green,Japan,Web,1036,19.2,0.943,28
+2025-06-01,Green,Germany,Phone,876,53.9,0.759,11
+2025-06-01,Green,Canada,Phone,122,63.3,0.813,2
+2025-06-01,Business Platinum,US,App,434,20.8,0.854,11
+2025-06-01,Business Platinum,Germany,Phone,820,43.7,0.841,17
+2025-06-01,Business Platinum,Australia,Web,239,44.3,0.921,4
+2025-06-01,Business Platinum,Japan,Phone,326,35.0,0.875,9
+2025-06-01,Corporate Card,Australia,Web,822,39.8,0.731,8
+2025-06-01,Corporate Card,Japan,App,974,41.8,0.866,23
+2025-06-01,Corporate Card,UK,Phone,707,25.5,0.918,16
+2025-06-01,Corporate Card,Canada,App,167,47.7,0.923,4
+2025-07-01,Platinum,Australia,Web,539,39.1,0.893,15
+2025-07-01,Platinum,UK,Phone,994,21.9,0.759,14
+2025-07-01,Platinum,Germany,App,703,22.1,0.766,4
+2025-07-01,Platinum,Japan,App,284,52.4,0.915,7
+2025-07-01,Gold,India,App,877,68.9,0.948,19
+2025-07-01,Gold,Japan,Web,381,57.7,0.757,8
+2025-07-01,Gold,Australia,App,169,32.2,0.836,4
+2025-07-01,Gold,Canada,Web,127,25.5,0.762,1
+2025-07-01,Green,Germany,Phone,733,60.2,0.715,5
+2025-07-01,Green,Australia,Phone,1345,52.3,0.891,20
+2025-07-01,Green,UK,Web,213,61.9,0.86,0
+2025-07-01,Green,India,App,905,55.2,0.849,12
+2025-07-01,Business Platinum,Germany,Web,700,27.8,0.859,18
+2025-07-01,Business Platinum,Japan,Phone,1230,27.6,0.878,16
+2025-07-01,Business Platinum,Australia,App,839,68.5,0.874,18
+2025-07-01,Business Platinum,Canada,App,460,40.7,0.833,12
+2025-07-01,Corporate Card,Australia,Web,147,40.2,0.849,2
+2025-07-01,Corporate Card,India,App,560,39.0,0.779,5
+2025-07-01,Corporate Card,Japan,Phone,492,70.0,0.804,9
+2025-07-01,Corporate Card,Germany,Phone,1058,51.2,0.822,25
+2025-08-01,Platinum,Australia,Web,1241,30.2,0.798,8
+2025-08-01,Platinum,Germany,App,585,46.0,0.927,17
+2025-08-01,Platinum,UK,App,930,19.3,0.792,23
+2025-08-01,Platinum,Japan,App,890,57.5,0.835,17
+2025-08-01,Gold,US,App,1253,30.3,0.828,28
+2025-08-01,Gold,UK,Web,399,64.3,0.928,9
+2025-08-01,Gold,Japan,Web,257,58.6,0.836,6
+2025-08-01,Gold,Australia,App,220,27.7,0.787,3
+2025-08-01,Green,Japan,App,579,18.8,0.904,5
+2025-08-01,Green,Canada,App,483,42.1,0.938,9
+2025-08-01,Green,India,Web,1297,32.4,0.926,16
+2025-08-01,Green,Australia,Web,104,41.4,0.794,2
+2025-08-01,Business Platinum,Japan,Phone,211,41.8,0.957,2
+2025-08-01,Business Platinum,India,App,300,69.5,0.929,3
+2025-08-01,Business Platinum,UK,Web,995,59.3,0.717,21
+2025-08-01,Business Platinum,Australia,App,1263,63.9,0.762,7
+2025-08-01,Corporate Card,Germany,App,595,50.0,0.757,14
+2025-08-01,Corporate Card,Canada,Web,873,26.5,0.712,10
+2025-08-01,Corporate Card,UK,Web,772,47.9,0.908,13
+2025-08-01,Corporate Card,Australia,App,423,21.5,0.917,3
+2025-09-01,Platinum,US,Web,1363,28.6,0.856,32
+2025-09-01,Platinum,Australia,Web,915,55.9,0.83,25
+2025-09-01,Platinum,India,App,778,21.4,0.73,9
+2025-09-01,Platinum,UK,App,1076,64.0,0.815,31
+2025-09-01,Gold,Germany,Web,437,67.7,0.907,4
+2025-09-01,Gold,Canada,Phone,687,71.1,0.888,9
+2025-09-01,Gold,Japan,Web,213,67.6,0.734,2
+2025-09-01,Gold,US,App,879,31.4,0.901,15
+2025-09-01,Green,UK,Phone,1014,38.9,0.734,23
+2025-09-01,Green,Canada,App,573,41.4,0.825,5
+2025-09-01,Green,Germany,Phone,169,30.9,0.825,2
+2025-09-01,Green,India,Phone,801,46.8,0.784,10
+2025-09-01,Business Platinum,UK,Phone,974,44.0,0.955,27
+2025-09-01,Business Platinum,Australia,Phone,1371,32.6,0.752,35
+2025-09-01,Business Platinum,US,App,840,71.0,0.925,5
+2025-09-01,Business Platinum,Canada,Web,1176,53.4,0.765,6
+2025-09-01,Corporate Card,India,Phone,486,29.7,0.717,6
+2025-09-01,Corporate Card,Japan,Web,1302,58.8,0.734,7
+2025-09-01,Corporate Card,Australia,Phone,226,59.9,0.74,3
+2025-09-01,Corporate Card,Canada,Phone,526,38.3,0.818,10
+2025-10-01,Platinum,Canada,Web,1005,70.2,0.912,22
+2025-10-01,Platinum,Japan,Web,700,64.2,0.796,9
+2025-10-01,Platinum,US,Web,884,29.4,0.761,18
+2025-10-01,Platinum,Germany,Web,619,39.8,0.95,12
+2025-10-01,Gold,Canada,Phone,266,27.8,0.848,4
+2025-10-01,Gold,UK,App,1257,48.7,0.943,6
+2025-10-01,Gold,Australia,Web,323,18.2,0.832,3
+2025-10-01,Gold,Germany,Phone,645,47.0,0.855,3
+2025-10-01,Green,Australia,Web,766,54.6,0.717,10
+2025-10-01,Green,India,Web,106,63.3,0.772,2
+2025-10-01,Green,Canada,App,196,24.1,0.773,3
+2025-10-01,Green,Germany,Web,506,37.5,0.724,11
+2025-10-01,Business Platinum,Japan,App,900,57.8,0.945,12
+2025-10-01,Business Platinum,US,App,998,63.2,0.951,9
+2025-10-01,Business Platinum,Australia,App,216,22.9,0.889,4
+2025-10-01,Business Platinum,UK,App,1221,19.9,0.777,27
+2025-10-01,Corporate Card,Japan,Phone,893,21.0,0.843,7
+2025-10-01,Corporate Card,UK,Web,997,70.8,0.813,10
+2025-10-01,Corporate Card,India,App,525,67.0,0.828,6
+2025-10-01,Corporate Card,Canada,App,938,42.3,0.803,8
+2025-11-01,Platinum,Germany,Phone,1349,20.6,0.749,11
+2025-11-01,Platinum,India,App,439,59.2,0.736,9
+2025-11-01,Platinum,Japan,Phone,604,54.8,0.913,4
+2025-11-01,Platinum,Canada,Web,1041,56.3,0.895,20
+2025-11-01,Gold,Germany,Web,1139,54.1,0.784,7
+2025-11-01,Gold,India,Web,1232,21.4,0.75,32
+2025-11-01,Gold,US,Web,157,23.0,0.789,4
+2025-11-01,Gold,Japan,Phone,1049,26.0,0.733,6
+2025-11-01,Green,Canada,App,863,57.8,0.878,13
+2025-11-01,Green,Germany,Phone,452,42.4,0.763,5
+2025-11-01,Green,Japan,Web,975,44.0,0.912,20
+2025-11-01,Green,India,App,267,47.1,0.712,4
+2025-11-01,Business Platinum,Australia,App,1044,21.7,0.789,23
+2025-11-01,Business Platinum,India,App,358,61.3,0.816,9
+2025-11-01,Business Platinum,Japan,Web,897,27.0,0.839,4
+2025-11-01,Business Platinum,Canada,Phone,1237,24.2,0.716,27
+2025-11-01,Corporate Card,Japan,App,516,66.2,0.788,14
+2025-11-01,Corporate Card,Germany,Web,133,37.7,0.955,2
+2025-11-01,Corporate Card,Canada,Web,1378,28.7,0.873,9
+2025-11-01,Corporate Card,US,Web,407,48.3,0.93,5
+2025-12-01,Platinum,UK,App,1069,26.0,0.732,10
+2025-12-01,Platinum,Australia,App,446,38.9,0.794,1
+2025-12-01,Platinum,Japan,Web,1218,28.0,0.844,22
+2025-12-01,Platinum,US,Phone,190,41.5,0.866,4
+2025-12-01,Gold,UK,Phone,370,41.3,0.826,7
+2025-12-01,Gold,Japan,App,297,37.3,0.92,5
+2025-12-01,Gold,US,Web,446,38.9,0.874,7
+2025-12-01,Gold,Canada,App,1163,38.9,0.795,11
+2025-12-01,Green,US,App,1232,67.0,0.841,5
+2025-12-01,Green,Japan,Web,1233,68.3,0.799,25
+2025-12-01,Green,Australia,App,310,41.8,0.92,4
+2025-12-01,Green,UK,Phone,965,71.8,0.897,26
+2025-12-01,Business Platinum,UK,Phone,1320,54.7,0.918,11
+2025-12-01,Business Platinum,Australia,Phone,787,59.6,0.887,10
+2025-12-01,Business Platinum,Canada,Web,521,65.5,0.916,9
+2025-12-01,Business Platinum,Japan,Phone,682,61.5,0.88,13
+2025-12-01,Corporate Card,India,App,328,66.7,0.719,8
+2025-12-01,Corporate Card,Japan,App,644,68.3,0.811,17
+2025-12-01,Corporate Card,UK,App,136,57.8,0.732,1
+2025-12-01,Corporate Card,Australia,Web,192,35.4,0.874,4
+2026-01-01,Platinum,Germany,App,691,71.4,0.907,14
+2026-01-01,Platinum,Australia,App,426,44.4,0.944,8
+2026-01-01,Platinum,US,Web,187,30.6,0.715,5
+2026-01-01,Platinum,Japan,App,996,54.3,0.763,6
+2026-01-01,Gold,Australia,Phone,657,37.3,0.765,7
+2026-01-01,Gold,Canada,Web,1046,26.1,0.919,9
+2026-01-01,Gold,India,Phone,1385,59.4,0.886,22
+2026-01-01,Gold,Japan,Web,375,19.5,0.925,10
+2026-01-01,Green,Japan,Phone,759,70.6,0.736,8
+2026-01-01,Green,Australia,App,1354,19.7,0.849,8
+2026-01-01,Green,India,Phone,506,45.1,0.808,13
+2026-01-01,Green,Canada,Web,896,34.5,0.952,10
+2026-01-01,Business Platinum,US,App,1345,42.8,0.737,12
+2026-01-01,Business Platinum,UK,App,894,52.6,0.891,15
+2026-01-01,Business Platinum,Japan,App,675,71.4,0.806,16
+2026-01-01,Business Platinum,India,App,1340,23.2,0.731,20
+2026-01-01,Corporate Card,US,Phone,587,43.0,0.911,7
+2026-01-01,Corporate Card,India,Phone,923,18.1,0.72,21
+2026-01-01,Corporate Card,Germany,Web,1340,62.2,0.733,25
+2026-01-01,Corporate Card,UK,App,1229,70.2,0.757,12
+2026-02-01,Platinum,Australia,App,654,38.2,0.956,17
+2026-02-01,Platinum,Japan,Web,920,54.7,0.75,25
+2026-02-01,Platinum,Germany,Web,1061,31.1,0.724,28
+2026-02-01,Platinum,Canada,Web,645,36.0,0.745,9
+2026-02-01,Gold,US,Web,531,25.0,0.829,9
+2026-02-01,Gold,UK,Web,1238,27.5,0.932,18
+2026-02-01,Gold,Canada,Phone,1231,42.6,0.79,18
+2026-02-01,Gold,Australia,Phone,119,18.3,0.816,0
+2026-02-01,Green,Australia,App,1317,43.0,0.825,17
+2026-02-01,Green,US,App,1008,64.5,0.873,18
+2026-02-01,Green,Japan,Phone,796,27.1,0.873,20
+2026-02-01,Green,India,Web,1346,68.4,0.918,11
+2026-02-01,Business Platinum,Canada,Web,893,70.4,0.95,23
+2026-02-01,Business Platinum,Germany,App,83,66.5,0.768,2
+2026-02-01,Business Platinum,US,Phone,659,44.3,0.729,5
+2026-02-01,Business Platinum,India,Web,231,41.1,0.755,6
+2026-02-01,Corporate Card,India,App,909,21.0,0.837,21
+2026-02-01,Corporate Card,US,Phone,1058,46.5,0.786,19
+2026-02-01,Corporate Card,UK,Phone,873,42.0,0.746,5
+2026-02-01,Corporate Card,Canada,App,272,58.5,0.908,1
+2026-03-01,Platinum,India,App,187,28.7,0.805,1
+2026-03-01,Platinum,US,App,398,61.6,0.957,8
+2026-03-01,Platinum,Germany,Web,1221,34.2,0.95,10
+2026-03-01,Platinum,Canada,Web,194,54.4,0.919,4
+2026-03-01,Gold,Australia,App,1374,31.4,0.875,28
+2026-03-01,Gold,US,App,1178,35.2,0.723,16
+2026-03-01,Gold,Germany,Phone,1166,26.7,0.71,31
+2026-03-01,Gold,India,Phone,621,43.9,0.898,5
+2026-03-01,Green,Australia,Web,231,45.1,0.878,3
+2026-03-01,Green,Japan,Web,1174,66.3,0.9,16
+2026-03-01,Green,Canada,Phone,369,38.6,0.773,7
+2026-03-01,Green,India,App,954,39.5,0.744,25
+2026-03-01,Business Platinum,Germany,Phone,565,35.8,0.777,5
+2026-03-01,Business Platinum,Australia,Web,292,29.5,0.855,6
+2026-03-01,Business Platinum,UK,Web,900,64.3,0.955,21
+2026-03-01,Business Platinum,India,App,1296,41.6,0.763,24
+2026-03-01,Corporate Card,US,App,1036,24.6,0.772,5
+2026-03-01,Corporate Card,Australia,Web,1004,58.5,0.818,17
+2026-03-01,Corporate Card,UK,Web,623,32.7,0.867,13
+2026-03-01,Corporate Card,Japan,App,485,33.5,0.733,5
+2026-04-01,Platinum,Germany,Web,1281,66.0,0.712,10
+2026-04-01,Platinum,India,App,186,55.7,0.886,3
+2026-04-01,Platinum,US,Web,1308,38.9,0.781,15
+2026-04-01,Platinum,Canada,Web,158,44.4,0.923,0
+2026-04-01,Gold,Australia,Web,386,49.8,0.903,3
+2026-04-01,Gold,US,Web,303,39.7,0.878,1
+2026-04-01,Gold,Japan,Web,622,51.4,0.742,16
+2026-04-01,Gold,India,Web,329,33.9,0.958,5
+2026-04-01,Green,US,Phone,582,57.1,0.833,2
+2026-04-01,Green,Germany,Phone,880,69.8,0.75,20
+2026-04-01,Green,India,App,109,41.8,0.717,1
+2026-04-01,Green,UK,Web,806,60.8,0.92,22
+2026-04-01,Business Platinum,India,Web,878,68.0,0.891,24
+2026-04-01,Business Platinum,Canada,App,829,33.2,0.791,4
+2026-04-01,Business Platinum,Germany,Phone,1136,27.8,0.723,26
+2026-04-01,Business Platinum,US,Phone,1016,69.2,0.941,24
+2026-04-01,Corporate Card,India,Web,561,71.4,0.916,13
+2026-04-01,Corporate Card,UK,Web,238,57.9,0.919,4
+2026-04-01,Corporate Card,Canada,Phone,370,35.4,0.913,7
+2026-04-01,Corporate Card,US,Web,709,42.7,0.725,3
+2026-05-01,Platinum,India,App,1160,20.9,0.859,4
+2026-05-01,Platinum,Japan,Phone,211,20.0,0.833,4
+2026-05-01,Platinum,US,App,1188,54.2,0.784,28
+2026-05-01,Platinum,Germany,App,1367,49.4,0.953,18
+2026-05-01,Gold,UK,Web,942,23.6,0.917,24
+2026-05-01,Gold,Germany,Phone,193,50.4,0.768,5
+2026-05-01,Gold,India,App,225,59.4,0.897,6
+2026-05-01,Gold,Canada,Phone,1237,65.5,0.886,12
+2026-05-01,Green,Japan,Phone,302,34.0,0.816,6
+2026-05-01,Green,US,Web,315,44.3,0.917,4
+2026-05-01,Green,Germany,Web,944,24.0,0.72,22
+2026-05-01,Green,Canada,Phone,1364,51.1,0.714,19
+2026-05-01,Business Platinum,US,App,692,43.6,0.733,13
+2026-05-01,Business Platinum,Canada,Web,1322,27.1,0.803,12
+2026-05-01,Business Platinum,Australia,Phone,929,41.4,0.764,19
+2026-05-01,Business Platinum,Germany,App,1111,60.5,0.77,12
+2026-05-01,Corporate Card,Japan,Phone,491,53.3,0.777,4
+2026-05-01,Corporate Card,Germany,App,880,24.5,0.793,6
+2026-05-01,Corporate Card,Canada,App,101,22.0,0.727,1
+2026-05-01,Corporate Card,UK,App,939,32.2,0.753,17
+2026-06-01,Platinum,India,Web,95,51.6,0.834,2
+2026-06-01,Platinum,UK,Phone,820,70.4,0.728,23
+2026-06-01,Platinum,US,Web,573,42.2,0.735,8
+2026-06-01,Platinum,Canada,App,745,40.0,0.842,21
+2026-06-01,Gold,Canada,Web,971,63.4,0.918,9
+2026-06-01,Gold,Japan,App,778,58.2,0.906,18
+2026-06-01,Gold,Germany,Web,786,20.5,0.901,22
+2026-06-01,Gold,India,Web,809,31.5,0.823,8
+2026-06-01,Green,Japan,App,347,22.3,0.756,5
+2026-06-01,Green,UK,App,406,38.0,0.835,3
+2026-06-01,Green,Australia,Web,143,34.8,0.775,3
+2026-06-01,Green,India,Web,1360,19.9,0.795,19
+2026-06-01,Business Platinum,Australia,Web,1375,70.9,0.736,36
+2026-06-01,Business Platinum,Canada,App,1092,61.3,0.739,19
+2026-06-01,Business Platinum,Germany,Web,381,40.6,0.853,5
+2026-06-01,Business Platinum,Japan,Web,748,26.9,0.885,11
+2026-06-01,Corporate Card,Canada,Phone,1204,28.2,0.868,25
+2026-06-01,Corporate Card,Japan,Phone,1368,19.4,0.912,13
+2026-06-01,Corporate Card,Germany,Phone,1047,43.6,0.825,17
+2026-06-01,Corporate Card,India,Web,799,29.3,0.809,22

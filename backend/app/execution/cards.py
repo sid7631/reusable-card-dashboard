@@ -40,8 +40,10 @@ async def run_card(card: CardSpec, source: DataSourceSpec, filters: Filters) -> 
             if card.chart_type == "kpi":
                 cur = _first_value(rows)
                 prev = _first_value(prev_rows)
-                if prev > 0:
-                    meta.update(prevValue=prev, deltaAbs=cur - prev, deltaPct=(cur - prev) / prev * 100)
+                # Any non-zero prior year compares — a negative one too (a variance, a net figure): the change
+                # is measured against its size, so -10 → -5 reads as +50%, an improvement
+                if prev != 0:
+                    meta.update(prevValue=prev, deltaAbs=cur - prev, deltaPct=(cur - prev) / abs(prev) * 100)
             else:
                 meta["prevRows"] = prev_rows
     return {"rows": rows, "meta": meta}

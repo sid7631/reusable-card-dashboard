@@ -38,7 +38,7 @@ export default function VersionHistory({ kind, assetId, assetName, canEdit, onCl
   const error = actionError ?? versionsQuery.error?.message ?? diffQuery.error?.message;
 
   const restore = async () => {
-    if (!selected || !confirm(`Restore v${selected.version_no}? This creates a new version with its content — nothing is deleted.`)) return;
+    if (!selected || !confirm(`Restore v${selected.version}? This creates a new version with its content — nothing is deleted.`)) return;
     setRestoring(true);
     try {
       await api.restore(kind, assetId, selected.version_no);
@@ -62,7 +62,7 @@ export default function VersionHistory({ kind, assetId, assetName, canEdit, onCl
                   selected?.id === v.id ? 'border-accent bg-accent-soft' : 'border-line hover:border-accent/40'
                 }`}>
                 <span className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-ink">v{v.version_no}</span>
+                  <span className="font-mono text-xs font-bold text-ink">v{v.version}</span>
                   {v.is_head && <span className="rounded bg-accent px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">Current</span>}
                   <span className="ml-auto text-[10px] text-ink-faint" title={new Date(v.created_at).toLocaleString()}>{timeAgo(v.created_at)}</span>
                 </span>
@@ -78,7 +78,7 @@ export default function VersionHistory({ kind, assetId, assetName, canEdit, onCl
             <>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate font-display text-base font-bold text-ink">v{selected.version_no} — {selected.name}</p>
+                  <p className="truncate font-display text-base font-bold text-ink">v{selected.version} — {selected.name}</p>
                   <p className="text-xs text-ink-faint">
                     {selected.created_by_name} · {new Date(selected.created_at).toLocaleString()}
                   </p>
@@ -86,13 +86,13 @@ export default function VersionHistory({ kind, assetId, assetName, canEdit, onCl
                 {canEdit && !selected.is_head && (
                   <button onClick={restore} disabled={restoring}
                     className="rounded-lg bg-accent px-3.5 py-1.5 text-xs font-bold text-white transition enabled:hover:bg-accent-deep disabled:opacity-50">
-                    {restoring ? 'Restoring…' : `Restore v${selected.version_no}`}
+                    {restoring ? 'Restoring…' : `Restore v${selected.version}`}
                   </button>
                 )}
               </div>
               {!selected.is_head && (
                 <div className="mb-3 flex w-fit rounded-lg border border-line p-0.5">
-                  {([['introduced', 'Changes in this version'], ['vs-current', `Compare with current (v${head?.version_no})`]] as [Mode, string][]).map(([m, text]) => (
+                  {([['introduced', 'Changes in this version'], ['vs-current', `Compare with current (v${head?.version})`]] as [Mode, string][]).map(([m, text]) => (
                     <button key={m} onClick={() => setMode(m)}
                       className={`rounded-md px-3 py-1 text-xs font-semibold transition ${mode === m ? 'bg-accent text-white' : 'text-ink-soft hover:text-ink'}`}>
                       {text}

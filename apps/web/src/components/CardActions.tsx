@@ -19,9 +19,20 @@ const chip = (active: boolean) =>
   }`;
 const label = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-soft';
 
-function escapeCsv(v: unknown): string {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+/** Text placed into the Excel/PDF export page: card names and values come from users and data, never markup. */
+export function escapeHtml(v: unknown): string {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/** Text a spreadsheet would run as a formula (=, +, -, @, tab, CR) is kept as text with a leading '.
+ *  Numbers — negatives included — are written as they are. */
+function asSpreadsheetText(v: unknown): string {
+  return typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : String(v ?? '');
+}
+
+export function escapeCsv(v: unknown): string {
+  const s = asSpreadsheetText(v);
+  return /[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
 function contextLines(context: CardContext): string[][] {
@@ -49,7 +60,7 @@ export function ExportModal({ card, rows, context, onClose }: { card: Card; rows
     if (format === 'csv') {
       const lines = [
         ...meta.map(([k, v]) => `# ${k}: ${v}`),
-        columns.join(','),
+        columns.map(escapeCsv).join(','),
         ...selectedRows.map((r) => columns.map((c) => escapeCsv(r[c])).join(',')),
       ];
       const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -61,9 +72,9 @@ export function ExportModal({ card, rows, context, onClose }: { card: Card; rows
     } else {
       const table = `
         <table border="1">
-          ${meta.length ? `<tr><td colspan="${columns.length}">${meta.map(([k, v]) => `${k}: ${v}`).join(' · ')}</td></tr>` : ''}
-          <tr>${columns.map((c) => `<th>${c}</th>`).join('')}</tr>
-          ${selectedRows.map((r) => `<tr>${columns.map((c) => `<td>${r[c] ?? ''}</td>`).join('')}</tr>`).join('')}
+          ${meta.length ? `<tr><td colspan="${columns.length}">${meta.map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(v)}`).join(' · ')}</td></tr>` : ''}
+          <tr>${columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('')}</tr>
+          ${selectedRows.map((r) => `<tr>${columns.map((c) => `<td>${escapeHtml(asSpreadsheetText(r[c]))}</td>`).join('')}</tr>`).join('')}
         </table>`;
       if (format === 'excel') {
         const blob = new Blob([`<html><head><meta charset="utf-8"></head><body>${table}</body></html>`], { type: 'application/vnd.ms-excel' });
@@ -76,9 +87,10 @@ export function ExportModal({ card, rows, context, onClose }: { card: Card; rows
         // PDF: open a print-ready snapshot — save as PDF from the print dialog
         const w = window.open('', '_blank');
         if (!w) return;
-        w.document.write(`<html><head><title>${card.name}</title>
+        w.opener = null;  // the print page needs nothing from the app window
+        w.document.write(`<html><head><title>${escapeHtml(card.name)}</title>
           <style>body{font-family:sans-serif;padding:24px}h1{font-size:18px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;font-size:12px;text-align:left}</style>
-          </head><body><h1>${card.name}</h1>${table}<script>print()</script></body></html>`);
+          </head><body><h1>${escapeHtml(card.name)}</h1>${table}<script>print()</script></body></html>`);
         w.document.close();
       }
     }
@@ -163,111 +175,36 @@ export function SqlModal({ card, context, onClose }: { card: Card; context: Card
 }
 
 // ------------------------------------------------------------------------ Share
-export function ShareModal({ card, context, onClose }: { card: Card; context: CardContext; onClose: () => void }) {
-  const [recipients, setRecipients] = useState<string[]>([]);
-  const [input, setInput] = useState('');
-  const [permission, setPermission] = useState<'View only' | 'Can edit'>('View only');
-  const [format, setFormat] = useState<'pdf' | 'csv'>('pdf');
-  const [message, setMessage] = useState('');
-  const [linkOn, setLinkOn] = useState(false);
-  const [sent, setSent] = useState(false);
-  const link = useMemo(() => `https://spendboard.local/share/${card.id}-${Math.random().toString(36).slice(2, 8)}`, [card.id]);
-
-  const addRecipient = () => {
-    const email = input.trim().replace(/,$/, '');
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !recipients.includes(email)) {
-      setRecipients((r) => [...r, email]);
-      setInput('');
+/** A real link to this card where it is shown (its dashboard, scrolled to it). Nothing is sent anywhere:
+ *  the link opens only for people who can already see the dashboard. */
+export function ShareModal({ card, context, onClose }: { card: Card & { item_id?: string }; context: CardContext; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const link = `${window.location.origin}${window.location.pathname}${card.item_id ? `#card-${card.item_id}` : ''}`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+    } catch {
+      setCopied(false);
     }
   };
-
-  if (sent) {
-    return (
-      <Modal title="Share" subtitle={`“${card.name}” — snapshot sent (mock).`} onClose={onClose}>
-        <div className="flex flex-col items-center py-6 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-positive/10 text-positive">
-            <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 8.5l3.5 3.5L13 4.5" /></svg>
-          </div>
-          <p className="mt-3 font-display font-semibold text-ink">Sent to {recipients.length || 'no'} recipient{recipients.length === 1 ? '' : 's'}</p>
-          <p className="mt-1 text-sm text-ink-soft">{permission} · {format.toUpperCase()} · {context.segmentLabel} · {context.periodLabel}</p>
-          {linkOn && <p className="mt-3 rounded-lg bg-canvas px-3 py-1.5 font-mono text-xs text-ink-soft">{link}</p>}
-        </div>
-      </Modal>
-    );
-  }
-
   return (
-    <Modal title="Share" subtitle="Triggered from widget card — the current segment, period and filters are preserved." onClose={onClose}>
-      <form onSubmit={(e) => { e.preventDefault(); addRecipient(); setSent(true); }} className="space-y-4">
-        <div>
-          <span className={label}>Recipients</span>
-          <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-line px-2 py-1.5 transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
-            {recipients.map((r) => (
-              <span key={r} className="flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">
-                {r}
-                <button type="button" onClick={() => setRecipients((rs) => rs.filter((x) => x !== r))} className="text-accent/60 hover:text-accent" aria-label={`Remove ${r}`}>×</button>
-              </span>
-            ))}
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addRecipient(); } }}
-              onBlur={addRecipient}
-              placeholder={recipients.length ? '' : 'Add colleague…'}
-              className="min-w-28 flex-1 border-0 px-1 py-1 text-sm outline-none"
-            />
-          </div>
+    <Modal title="Copy link" subtitle={`A link to “${card.name}” on this page.`} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2">
+          <input readOnly value={link} onFocus={(e) => e.target.select()} aria-label="Link to this card"
+            className="min-w-0 flex-1 bg-transparent font-mono text-xs text-ink outline-none" />
+          <button type="button" onClick={copy}
+            className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-deep">
+            {copied ? 'Copied' : 'Copy'}
+          </button>
         </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <span className={label}>Permission</span>
-            <div className="flex gap-2">
-              {(['View only', 'Can edit'] as const).map((p) => (
-                <button type="button" key={p} onClick={() => setPermission(p)} className={chip(permission === p)}>{p}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <span className={label}>File format</span>
-            <div className="flex gap-2">
-              {(['pdf', 'csv'] as const).map((f) => (
-                <button type="button" key={f} onClick={() => setFormat(f)} className={chip(format === f)}>{f.toUpperCase()}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <span className={label}>Optional message</span>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            rows={2}
-            placeholder={`Sharing the ${context.periodLabel} ${card.name} snapshot — filters preserved.`}
-            className="w-full resize-none rounded-lg border border-line px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
-
-        <button type="button" onClick={() => setLinkOn((v) => !v)}
-          className="flex w-full items-center justify-between rounded-lg border border-line px-3 py-2.5 text-sm text-ink transition hover:border-accent/40">
-          <span className="font-medium">Generate read-only link</span>
-          <span className={`relative h-5 w-9 rounded-full transition ${linkOn ? 'bg-positive' : 'bg-line'}`}>
-            <span className={`absolute top-0.5 size-4 rounded-full bg-white shadow transition-all ${linkOn ? 'left-[18px]' : 'left-0.5'}`} />
-          </span>
-        </button>
-        {linkOn && (
-          <div className="flex items-center justify-between gap-2 rounded-lg bg-canvas px-3 py-2">
-            <span className="truncate font-mono text-xs text-ink-soft">{link}</span>
-            <button type="button" onClick={() => navigator.clipboard.writeText(link)} className="shrink-0 text-xs font-semibold text-accent hover:underline">Copy</button>
-          </div>
-        )}
-
-        <button type="submit" disabled={!recipients.length && !input.trim() && !linkOn}
-          className="w-full rounded-lg bg-accent py-2.5 font-display text-sm font-semibold text-white transition enabled:hover:bg-accent-deep disabled:opacity-40">
-          ✉ Send
-        </button>
-      </form>
+        <ul className="space-y-1.5 text-xs text-ink-soft">
+          <li>Only people who can already open this page can open the link — share the dashboard first if needed.</li>
+          <li>It opens with the page's own filters, not your current ones ({context.segmentLabel} · {context.periodLabel}).</li>
+          <li>To send the numbers themselves, use <span className="font-semibold">Export data</span> and attach the file.</li>
+        </ul>
+      </div>
     </Modal>
   );
 }

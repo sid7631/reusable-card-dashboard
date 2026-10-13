@@ -118,6 +118,11 @@ function SourceTile({ source, active, cardCount, onChoose }: { source: Dataset; 
           {' · '}{cardCount ? `${cardCount} example${cardCount === 1 ? '' : 's'}` : 'no cards yet'}
         </p>
       )}
+      {Boolean(source.missing_tables?.length) && (
+        <p className="mt-1.5 text-[11px] font-medium text-amber-700" title="Open the data source to remove it from the model">
+          Model mentions a missing table: {source.missing_tables!.join(', ')}
+        </p>
+      )}
     </button>
   );
 }

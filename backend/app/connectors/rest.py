@@ -41,6 +41,7 @@ async def fetch_records(spec: DataSourceSpec, *, max_pages: int | None = None) -
     headers = {"Accept": "application/json", **cfg.headers, **await _auth_headers(spec)}
     limit_bytes = settings.rest_max_response_mb * 1024 * 1024
     records: list[dict[str, Any]] = []
+    previous: list[dict[str, Any]] = []
     pages = 1 if cfg.pagination.type == "none" else (max_pages or cfg.pagination.max_pages)
     # Redirects are not followed: they could bounce a request (and its credentials) to another host
     async with httpx.AsyncClient(timeout=spec.execution.timeout_s, follow_redirects=False) as client:
@@ -62,6 +63,9 @@ async def fetch_records(spec: DataSourceSpec, *, max_pages: int | None = None) -
                 batch = records_at(res.json(), cfg.records_path)
             except ValueError as exc:
                 raise QueryError("The API did not return JSON.") from exc
+            if page > 1 and batch == previous:
+                break  # the API ignores paging and sent the same page again: don't load it twice
+            previous = batch
             records += batch
             if len(records) > settings.rest_max_records:
                 raise QueryError(f"More than {settings.rest_max_records:,} records — narrow the request.")

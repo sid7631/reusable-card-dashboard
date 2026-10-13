@@ -26,6 +26,17 @@ def _deny(message: str) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, message)
 
 
+def _check_model_tables(spec: DataSourceSpec, tables: set[str]) -> None:
+    """Every table the model describes must exist in the source — otherwise cards built on it fail.
+    Checked where the tables are known without connecting: uploaded files and REST extracts."""
+    missing = [d.name for d in spec.model.datasets if d.name not in tables]
+    if missing:
+        names = ", ".join(f"“{m}”" for m in missing)
+        have = ", ".join(f"“{t}”" for t in sorted(tables))
+        raise _deny(f"The model mentions {names}, which this source doesn't have (it has {have}). "
+                    "Remove it from the model, or test the connection again.")
+
+
 async def check_data_source(session: AsyncSession, user: User, asset: Asset, spec: DataSourceSpec) -> None:
     lineage = await _lineage_specs(session, asset)
 
@@ -64,6 +75,9 @@ async def check_data_source(session: AsyncSession, user: User, asset: Asset, spe
             raise _deny("Uploaded file not found.")
         if file.uploaded_by != user.id and not any(s.file and s.file.file_id == file.id for s in lineage):
             raise _deny("You can only build sources from files you uploaded.")
+        _check_model_tables(spec, {t["name"] for t in file.tables})
+    if spec.rest:
+        _check_model_tables(spec, {spec.rest.table})   # a REST extract holds exactly one table
 
     host = spec.connection.host if spec.connection else rest.host_of(spec) if spec.rest else None
     if host and not host.startswith("env:") and not any(s.endpoint() == spec.endpoint() for s in lineage):

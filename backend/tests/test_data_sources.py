@@ -289,3 +289,53 @@ async def test_seed_skips_bigquery_on_any_emulator_error(monkeypatch, capsys):
     monkeypatch.setattr(seed, "_load_bigquery_emulator", broken)
     await seed.seed_bigquery_demo()                     # returns instead of raising
     assert "BigQuery demo: skipped" in capsys.readouterr().out
+
+
+async def test_a_model_naming_a_missing_table_cannot_be_saved(user):
+    # REST: the model was built for the default table name, then the table was renamed
+    spec = {**rest_spec(), "model": {"datasets": [{"name": "records", "dimensions": [], "measures": []}]}}
+    res = await user.post("/api/data-sources", {"name": "Renamed", "spec": spec})
+    assert res.status_code == 422 and "“records”" in res.json()["detail"] and "“scores”" in res.json()["detail"]
+    ok = {**rest_spec(), "model": {"datasets": [{"name": "scores", "dimensions": [], "measures": []}]}}
+    assert (await user.post("/api/data-sources", {"name": "Right", "spec": ok})).status_code == 201
+
+    # File: the model must describe the uploaded file's tables
+    up = (await user.upload("/api/files", "sales.csv", CSV)).json()
+    bad = {"type": "file", "file": {"file_id": up["id"]}, "model": {"datasets": [
+        *up["suggested_model"]["datasets"], {"name": "records", "dimensions": [], "measures": []}]}}
+    assert (await user.post("/api/data-sources", {"name": "Bad file", "spec": bad})).status_code == 422
+
+
+async def test_a_leftover_model_entry_does_not_take_down_the_source(user, monkeypatch):
+    """Sources saved before the check (like Riley's "api test") still load: the missing table is reported,
+    the builder uses the table that exists, and filter values come from it."""
+    from app.connectors import policy
+    monkeypatch.setattr(policy, "_check_model_tables", lambda spec, tables: None)   # as before the fix
+    up = (await user.upload("/api/files", "sales.csv", CSV)).json()
+    real = up["suggested_model"]["datasets"][0]
+    leftover = {**real, "name": "records"}                    # same fields, but no such table
+    source = (await user.post("/api/data-sources", {"name": "With leftover", "spec": {
+        "type": "file", "file": {"file_id": up["id"]}, "model": {"datasets": [leftover, real]}}})).json()
+    monkeypatch.undo()
+
+    entry = next(d for d in (await user.get("/api/datasets")).json() if d["id"] == source["id"])
+    assert not entry.get("error"), entry.get("error")
+    assert entry["name"] == "sales" and entry["missing_tables"] == ["records"]
+    assert entry["dimensionValues"]["region"] == ["APAC", "EMEA"]
+
+
+async def test_paging_stops_when_the_api_repeats_the_same_page(monkeypatch):
+    """An API that ignores the page parameter would otherwise be fetched max_pages times, repeating records."""
+    from app.governance.specs import DataSourceSpec
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=[{"id": 1}, {"id": 2}, {"id": 3}])
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(rest.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    spec = DataSourceSpec.model_validate({"type": "rest", "rest": {
+        "url": "https://api.example.com/all", "pagination": {"type": "page", "page_param": "page", "max_pages": 20}}})
+    records = await rest.fetch_records(spec)
+    assert [r["id"] for r in records] == [1, 2, 3] and len(calls) == 2

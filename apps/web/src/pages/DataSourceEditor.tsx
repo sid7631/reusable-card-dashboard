@@ -105,6 +105,9 @@ export default function DataSourceEditor() {
   }, [sourceQuery.data, runTest]);
 
   const patch = (fn: (s: DataSourceSpec) => DataSourceSpec) => setSpec((s) => s && fn(s));
+  // Model entries for tables the source doesn't have (known once a test or upload has listed its tables)
+  const staleTables = tables.length && spec
+    ? spec.model.datasets.map((d) => d.name).filter((name) => !tables.some((t) => t.name === name)) : [];
 
   const upload = async (file: File) => {
     setTesting(true);
@@ -220,7 +223,13 @@ export default function DataSourceEditor() {
               <div><span className={label}>URL</span><input disabled={!canEdit} value={rest.url} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, url: e.target.value } }))} className={field} placeholder="https://api.example.com/v1/orders" /></div>
               <div className="grid grid-cols-2 gap-2">
                 <div><span className={label}>Records path</span><input disabled={!canEdit} value={rest.records_path} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, records_path: e.target.value } }))} className={field} placeholder="data.items" /></div>
-                <div><span className={label}>Table name</span><input disabled={!canEdit} value={rest.table} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, table: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') } }))} className={field} /></div>
+                <div><span className={label}>Table name</span><input disabled={!canEdit} value={rest.table} className={field}
+                  onChange={(e) => {
+                    const table = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+                    // The model follows the rename, so a model built before it doesn't point at a table that's gone
+                    patch((s) => ({ ...s, rest: { ...rest, table },
+                      model: { ...s.model, datasets: s.model.datasets.map((d) => (d.name === rest.table ? { ...d, name: table } : d)) } }));
+                  }} /></div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -240,12 +249,13 @@ export default function DataSourceEditor() {
                   </select>
                 </div>
                 {rest.pagination.type === 'page' && (
-                  <div><span className={label}>Page param</span><input disabled={!canEdit} value={rest.pagination.page_param} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, pagination: { ...rest.pagination, page_param: e.target.value } } }))} className={field} /></div>
+                  <div><span className={label} title="Name of the page-number parameter in the API's address">Page number parameter</span><input disabled={!canEdit} value={rest.pagination.page_param} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, pagination: { ...rest.pagination, page_param: e.target.value } } }))} className={field} /></div>
                 )}
               </div>
               {rest.pagination.type === 'page' && (
                 <div className="grid grid-cols-3 gap-2">
-                  <div><span className={label}>Size param</span><input disabled={!canEdit} value={rest.pagination.size_param ?? ''} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, pagination: { ...rest.pagination, size_param: e.target.value || null } } }))} className={field} placeholder="per_page" /></div>
+                  <div><span className={label} title="The parameter's NAME in the API's address, e.g. per_page or limit — not a number. Leave empty if the API has none.">Page size parameter name</span><input disabled={!canEdit} value={rest.pagination.size_param ?? ''} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, pagination: { ...rest.pagination, size_param: e.target.value || null } } }))} className={field} placeholder="e.g. per_page (optional)" />
+                    {/^\d+$/.test(rest.pagination.size_param ?? '') && <p className="mt-1 text-[11px] text-amber-700">This wants the parameter's name (like per_page), not a number — the number goes in Page size.</p>}</div>
                   <div><span className={label}>Page size</span><input disabled={!canEdit} type="number" value={rest.pagination.page_size} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, pagination: { ...rest.pagination, page_size: Number(e.target.value) } } }))} className={field} /></div>
                   <div><span className={label}>Max pages</span><input disabled={!canEdit} type="number" value={rest.pagination.max_pages} onChange={(e) => patch((s) => ({ ...s, rest: { ...rest, pagination: { ...rest.pagination, max_pages: Number(e.target.value) } } }))} className={field} /></div>
                 </div>
@@ -356,6 +366,18 @@ export default function DataSourceEditor() {
                 <button onClick={() => patch((s) => ({ ...s, model: suggested }))} className="text-xs font-semibold text-accent hover:underline">Reset to suggestion</button>
               )}
             </div>
+            {canEdit && staleTables.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
+                <span>
+                  The model mentions {staleTables.length === 1 ? 'a table' : 'tables'} this source doesn't have:{' '}
+                  <span className="font-semibold">{staleTables.join(', ')}</span>. Cards can't use {staleTables.length === 1 ? 'it' : 'them'}.
+                </span>
+                <button onClick={() => patch((s) => ({ ...s, model: { ...s.model, datasets: s.model.datasets.filter((d) => !staleTables.includes(d.name)) } }))}
+                  className="rounded-lg bg-amber-500 px-3 py-1 font-semibold text-white transition hover:bg-amber-600">
+                  Remove {staleTables.length === 1 ? 'it' : 'them'}
+                </button>
+              </div>
+            )}
             {tables.length ? (
               canEdit
                 ? <ModelEditor tables={tables} model={spec.model} suggested={suggested} onChange={(model) => patch((s) => ({ ...s, model }))} />

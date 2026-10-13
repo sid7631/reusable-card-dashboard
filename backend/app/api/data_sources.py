@@ -243,12 +243,17 @@ async def _catalog(version_id: int, raw_spec: dict[str, Any]) -> dict[str, Any]:
         for t in tables:  # exact counts for modelled tables (estimates can be stale; BigQuery metadata is exact)
             rows = await connectors.execute(spec, f'SELECT COUNT(*) AS n FROM {quote_table(t["name"], spec.dialect)}', [])
             t["row_count"] = rows[0]["n"]
-    primary = spec.model.datasets[0] if spec.model.datasets else None
+    # A model entry whose table the source doesn't have (e.g. left over from a rename) is reported, not fatal:
+    # the builder uses the first modelled table that exists
+    existing = {t["name"] for t in tables}
+    missing = [d.name for d in spec.model.datasets if d.name not in existing]
+    primary = next((d for d in spec.model.datasets if d.name in existing), None)
     dims = [d.name for d in (primary.dimensions if primary else []) if d.type not in TEMPORAL_TYPES]
     # Same cached, capped lookup as filter dropdowns — on BigQuery every distinct-value query is a billed scan.
     # Run together: one after another, a remote source adds up a round trip per field
     found = await asyncio.gather(*(dimension_values(spec, version_id, d, Filters()) for d in dims))
-    catalog = {"tables": tables, "dimensionValues": {d: v[:200] for d, v in zip(dims, found, strict=True)}}
+    catalog = {"tables": tables, "primary": primary.name if primary else None, "missing": missing,
+               "dimensionValues": {d: v[:200] for d, v in zip(dims, found, strict=True)}}
     _catalog_cache[version_id] = (time.monotonic(), catalog)
     return catalog
 
@@ -281,8 +286,8 @@ async def list_datasets(user: CurrentUser, session: Session) -> list[dict[str, A
             return {**base, **empty, "error": str(exc)}
         first = catalog["tables"][0] if catalog["tables"] else {"name": "", "row_count": 0, "columns": []}
         return {**base, "tables": catalog["tables"],
-                # primary table, for the builder
-                "name": spec.model.datasets[0].name if spec.model.datasets else first["name"],
+                # primary table, for the builder; model entries without a table are listed, not fatal
+                "name": catalog["primary"] or first["name"], "missing_tables": catalog["missing"],
                 "rowCount": first["row_count"], "columns": first["columns"],
                 "dimensionValues": catalog["dimensionValues"]}
 

@@ -18,18 +18,25 @@ def dataset_with(spec: DataSourceSpec, dimension: str) -> SemanticDataset | None
 
 
 async def dimension_values(spec: DataSourceSpec, version_id: int, dimension: str, narrowing: Filters) -> list[str]:
-    ds = dataset_with(spec, dimension)
-    if ds is None:
+    candidates = [d for d in spec.model.datasets if any(x.name == dimension for x in d.dimensions)]
+    if not candidates:
         return []
     key = (version_id, dimension, narrowing.cache_key())
     hit = _cache.get(key)
     if hit and time.monotonic() - hit[0] < _TTL_S:
         return hit[1]
-    column = quote(next(d.column for d in ds.dimensions if d.name == dimension), spec.dialect)
-    bound = bind(narrowing, ds, spec.dialect)
-    sql = (f"SELECT DISTINCT {column} AS v FROM {quote_table(ds.name, spec.dialect)} WHERE {column} IS NOT NULL {bound.text()} "
-           f"ORDER BY 1 LIMIT {MAX_OPTIONS}")
-    rows = await connectors.execute(spec, sql, bound.params, version_id=version_id, max_rows=MAX_OPTIONS)
+    for i, ds in enumerate(candidates):
+        column = quote(next(d.column for d in ds.dimensions if d.name == dimension), spec.dialect)
+        bound = bind(narrowing, ds, spec.dialect)
+        sql = (f"SELECT DISTINCT {column} AS v FROM {quote_table(ds.name, spec.dialect)} WHERE {column} IS NOT NULL {bound.text()} "
+               f"ORDER BY 1 LIMIT {MAX_OPTIONS}")
+        try:
+            rows = await connectors.execute(spec, sql, bound.params, version_id=version_id, max_rows=MAX_OPTIONS)
+            break
+        except connectors.QueryError:
+            # A model entry whose table is gone (left over from a rename): try the next table with this field
+            if i == len(candidates) - 1:
+                raise
     # Booleans as the filters compare them (lowercase), not Python's "True"/"False"
     values = [str(r["v"]).lower() if isinstance(r["v"], bool) else str(r["v"]) for r in rows]
     _cache[key] = (time.monotonic(), values)

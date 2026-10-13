@@ -407,6 +407,8 @@ export interface Dataset {
   /** Still being read on the server (slow source); the list is asked again shortly. */
   loading?: boolean;
   scope: Scope;
+  /** Tables the model describes that the source doesn't have (left over from a rename). */
+  missing_tables?: string[];
   /** Primary table. */
   name: string;
   label: string;
